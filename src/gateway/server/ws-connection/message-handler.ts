@@ -1271,7 +1271,6 @@ function getRawDataByteLength(data: unknown): number {
   }
   return Buffer.byteLength(String(data));
 }
-
 function setSocketMaxPayload(socket: WebSocket, maxPayload: number): void {
   const receiver = (socket as { _receiver?: { _maxPayload?: number } })._receiver;
   if (receiver) {
