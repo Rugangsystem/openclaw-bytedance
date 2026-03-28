@@ -114,6 +114,10 @@ export default defineSingleProviderPluginEntry({
       streamFn = createXaiToolCallArgumentDecodingWrapper(streamFn);
       return createToolStreamWrapper(streamFn, ctx.extraParams?.tool_stream !== false);
     },
+    // Provider-specific fallback auth stays owned by the xAI plugin so core
+    // auth/discovery code can consume it generically without parsing xAI's
+    // private config layout. Callers may receive a real key from the active
+    // runtime snapshot or a non-secret SecretRef marker from source config.
     resolveSyntheticAuth: ({ config }) => {
       const fallbackAuth = resolveXaiProviderFallbackAuth(config);
       if (!fallbackAuth) {
