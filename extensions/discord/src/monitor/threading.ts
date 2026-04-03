@@ -14,6 +14,7 @@ import type { DiscordMessageEvent } from "./listeners.js";
 import {
   resolveDiscordChannelInfo,
   resolveDiscordEmbedText,
+  resolveDiscordForwardedMessagesTextFromSnapshots,
   resolveDiscordMessageChannelId,
 } from "./message-utils.js";
 import { generateThreadTitle } from "./thread-title.js";
@@ -198,20 +199,13 @@ export async function resolveDiscordThreadStarter(params: {
     )) as {
       content?: string | null;
       embeds?: Array<{ title?: string | null; description?: string | null }>;
-      message_snapshots?: Array<{
-        message?: {
-          content?: string | null;
-          attachments?: unknown[];
-          embeds?: Array<{ title?: string | null; description?: string | null }>;
-          sticker_items?: unknown[];
-        };
-      }>;
       member?: { nick?: string | null; displayName?: string | null };
       author?: {
         id?: string | null;
         username?: string | null;
         discriminator?: string | null;
       };
+      message_snapshots?: unknown;
       timestamp?: string | null;
     };
     if (!starter) {
@@ -219,7 +213,9 @@ export async function resolveDiscordThreadStarter(params: {
     }
     const content = starter.content?.trim() ?? "";
     const embedText = resolveDiscordEmbedText(starter.embeds?.[0]);
-    const forwardedText = resolveStarterForwardedText(starter.message_snapshots);
+    const forwardedText = resolveDiscordForwardedMessagesTextFromSnapshots(
+      starter.message_snapshots,
+    );
     const text = content || embedText || forwardedText;
     if (!text) {
       return null;
@@ -595,32 +591,4 @@ export function resolveDiscordReplyDeliveryPlan(params: {
     allowReference,
   });
   return { deliverTarget, replyTarget, replyReference };
-}
-
-/**
- * Extract text from forwarded message snapshots for thread starter resolution.
- * Discord forwarded messages have empty `content` and store the original text
- * in `message_snapshots[0].message.content`.
- */
-function resolveStarterForwardedText(
-  snapshots?: Array<{
-    message?: {
-      content?: string | null;
-      attachments?: unknown[];
-      embeds?: Array<{ title?: string | null; description?: string | null }>;
-      sticker_items?: unknown[];
-    };
-  }>,
-): string {
-  if (!Array.isArray(snapshots) || snapshots.length === 0) {
-    return "";
-  }
-  const blocks: string[] = [];
-  for (const snapshot of snapshots) {
-    const msg = snapshot.message;
-    if (!msg) continue;
-    const text = msg.content?.trim() || resolveDiscordEmbedText(msg.embeds?.[0]) || "";
-    if (text) blocks.push(`[Forwarded message]\n${text}`);
-  }
-  return blocks.join("\n\n");
 }

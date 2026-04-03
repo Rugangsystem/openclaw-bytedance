@@ -635,11 +635,15 @@ function resolveDiscordMentions(text: string, message: Message): string {
 }
 
 function resolveDiscordForwardedMessagesText(message: Message): string {
-  const snapshots = resolveDiscordMessageSnapshots(message);
-  if (snapshots.length === 0) {
+  return resolveDiscordForwardedMessagesTextFromSnapshots(resolveDiscordMessageSnapshots(message));
+}
+
+export function resolveDiscordForwardedMessagesTextFromSnapshots(snapshots: unknown): string {
+  const normalizedSnapshots = normalizeDiscordMessageSnapshots(snapshots);
+  if (normalizedSnapshots.length === 0) {
     return "";
   }
-  const forwardedBlocks = snapshots
+  const forwardedBlocks = normalizedSnapshots
     .map((snapshot) => {
       const snapshotMessage = snapshot.message;
       if (!snapshotMessage) {
@@ -664,10 +668,14 @@ function resolveDiscordForwardedMessagesText(message: Message): string {
 
 function resolveDiscordMessageSnapshots(message: Message): DiscordMessageSnapshot[] {
   const rawData = (message as { rawData?: { message_snapshots?: unknown } }).rawData;
-  const snapshots =
+  return normalizeDiscordMessageSnapshots(
     rawData?.message_snapshots ??
-    (message as { message_snapshots?: unknown }).message_snapshots ??
-    (message as { messageSnapshots?: unknown }).messageSnapshots;
+      (message as { message_snapshots?: unknown }).message_snapshots ??
+      (message as { messageSnapshots?: unknown }).messageSnapshots,
+  );
+}
+
+function normalizeDiscordMessageSnapshots(snapshots: unknown): DiscordMessageSnapshot[] {
   if (!Array.isArray(snapshots)) {
     return [];
   }

@@ -1,4 +1,5 @@
 import { ChannelType, type Client } from "@buape/carbon";
+import { StickerFormatType } from "discord-api-types/v10";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetDiscordThreadStarterCacheForTest,
@@ -159,6 +160,63 @@ describe("resolveDiscordThreadStarter", () => {
     expect(result).toBeTruthy();
     expect(result!.text).toContain("first forwarded message");
     expect(result!.text).toContain("second forwarded message");
+  });
+
+  it("preserves forwarded attachment placeholders in thread starter context", async () => {
+    const result = await resolveStarter(
+      {
+        content: "",
+        embeds: [],
+        message_snapshots: [
+          {
+            message: {
+              attachments: [
+                {
+                  id: "a1",
+                  filename: "forwarded.png",
+                  content_type: "image/png",
+                  url: "https://cdn.discordapp.com/forwarded.png",
+                },
+              ],
+            },
+          },
+        ],
+        author: { id: "u6", username: "Frank", discriminator: "0" },
+      } as never,
+      () => undefined,
+    );
+
+    expect(result).toBeTruthy();
+    expect(result!.text).toContain("[Forwarded message]");
+    expect(result!.text).toContain("<media:image> (1 image)");
+  });
+
+  it("preserves forwarded sticker placeholders in thread starter context", async () => {
+    const result = await resolveStarter(
+      {
+        content: "",
+        embeds: [],
+        message_snapshots: [
+          {
+            message: {
+              sticker_items: [
+                {
+                  id: "s1",
+                  name: "party",
+                  format_type: StickerFormatType.PNG,
+                },
+              ],
+            },
+          },
+        ],
+        author: { id: "u7", username: "Grace", discriminator: "0" },
+      } as never,
+      () => undefined,
+    );
+
+    expect(result).toBeTruthy();
+    expect(result!.text).toContain("[Forwarded message]");
+    expect(result!.text).toContain("<media:sticker> (1 sticker)");
   });
 
   it("returns null when content, embeds, and snapshots are all empty", async () => {
