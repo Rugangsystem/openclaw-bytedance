@@ -67,6 +67,11 @@ type ResolvedLocalMarketplaceSource = {
   rootDir: string;
 };
 
+type MarketplaceRootContext = {
+  logicalRootDir: string;
+  canonicalRootDir?: string;
+};
+
 type KnownMarketplaceRecord = {
   installLocation?: string;
   source?: unknown;
@@ -367,7 +372,7 @@ async function resolveLocalMarketplaceSource(
     const rootDir = deriveMarketplaceRootFromManifestPath(resolved);
     return {
       ok: true,
-      rootDir: await fs.realpath(rootDir),
+      rootDir,
       manifestPath: resolved,
     };
   }
@@ -377,11 +382,10 @@ async function resolveLocalMarketplaceSource(
   }
 
   const rootDir = path.basename(resolved) === ".claude-plugin" ? path.dirname(resolved) : resolved;
-  const canonicalRootDir = await fs.realpath(rootDir);
   for (const candidate of MARKETPLACE_MANIFEST_CANDIDATES) {
     const manifestPath = path.join(rootDir, candidate);
     if (await pathExists(manifestPath)) {
-      return { ok: true, rootDir: canonicalRootDir, manifestPath };
+      return { ok: true, rootDir, manifestPath };
     }
   }
 
@@ -809,13 +813,12 @@ async function downloadUrlToTempFile(
 }
 
 async function ensureInsideMarketplaceRoot(
-  rootDir: string,
+  rootContext: MarketplaceRootContext,
   candidate: string,
-  options?: { enforceCanonicalContainment?: boolean },
 ): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
-  const resolved = path.resolve(rootDir, candidate);
+  const resolved = path.resolve(rootContext.logicalRootDir, candidate);
   const resolvedExists = await pathExists(resolved);
-  const relative = path.relative(rootDir, resolved);
+  const relative = path.relative(rootContext.logicalRootDir, resolved);
   if (relative === ".." || relative.startsWith(`..${path.sep}`)) {
     return {
       ok: false,
@@ -823,14 +826,14 @@ async function ensureInsideMarketplaceRoot(
     };
   }
 
-  if (options?.enforceCanonicalContainment === true) {
+  if (rootContext.canonicalRootDir) {
     try {
-      const rootLstat = await fs.lstat(rootDir);
+      const rootLstat = await fs.lstat(rootContext.canonicalRootDir);
       if (!rootLstat.isDirectory()) {
         throw new Error("invalid marketplace root");
       }
 
-      const rootRealPath = await fs.realpath(rootDir);
+      const rootRealPath = await fs.realpath(rootContext.canonicalRootDir);
       let existingPath = resolved;
       // `pathExists` uses `fs.access`, so dangling symlinks are treated as missing and we walk up
       // to the nearest existing ancestor. Live symlinks stop here and are canonicalized below.
@@ -872,6 +875,19 @@ async function ensureInsideMarketplaceRoot(
   return { ok: true, path: resolved };
 }
 
+async function buildMarketplaceRootContext(params: {
+  logicalRootDir: string;
+  origin: MarketplaceManifestOrigin;
+}): Promise<MarketplaceRootContext> {
+  if (params.origin === "local") {
+    return { logicalRootDir: params.logicalRootDir };
+  }
+  return {
+    logicalRootDir: params.logicalRootDir,
+    canonicalRootDir: await fs.realpath(params.logicalRootDir),
+  };
+}
+
 async function validateMarketplaceManifest(params: {
   manifest: MarketplaceManifest;
   sourceLabel: string;
@@ -882,6 +898,10 @@ async function validateMarketplaceManifest(params: {
     return { ok: true, manifest: params.manifest };
   }
 
+  const rootContext = await buildMarketplaceRootContext({
+    logicalRootDir: params.rootDir,
+    origin: params.origin,
+  });
   for (const plugin of params.manifest.plugins) {
     const source = plugin.source;
     if (source.kind === "path") {
@@ -901,9 +921,7 @@ async function validateMarketplaceManifest(params: {
             "remote marketplaces may only use relative plugin paths",
         };
       }
-      const resolved = await ensureInsideMarketplaceRoot(params.rootDir, source.path, {
-        enforceCanonicalContainment: true,
-      });
+      const resolved = await ensureInsideMarketplaceRoot(rootContext, source.path);
       if (!resolved.ok) {
         return {
           ok: false,
@@ -926,8 +944,7 @@ async function validateMarketplaceManifest(params: {
 
 async function resolveMarketplaceEntryInstallPath(params: {
   source: MarketplaceEntrySource;
-  marketplaceRootDir: string;
-  marketplaceOrigin: MarketplaceManifestOrigin;
+  marketplaceRootContext: MarketplaceRootContext;
   logger?: MarketplaceLogger;
   timeoutMs?: number;
 }): Promise<
@@ -953,9 +970,7 @@ async function resolveMarketplaceEntryInstallPath(params: {
     }
     const resolved = path.isAbsolute(params.source.path)
       ? { ok: true as const, path: params.source.path }
-      : await ensureInsideMarketplaceRoot(params.marketplaceRootDir, params.source.path, {
-          enforceCanonicalContainment: params.marketplaceOrigin === "remote",
-        });
+      : await ensureInsideMarketplaceRoot(params.marketplaceRootContext, params.source.path);
     if (!resolved.ok) {
       return resolved;
     }
@@ -983,9 +998,13 @@ async function resolveMarketplaceEntryInstallPath(params: {
       params.source.kind === "github" || params.source.kind === "git"
         ? params.source.path?.trim() || "."
         : params.source.path.trim();
-    const target = await ensureInsideMarketplaceRoot(cloned.rootDir, subPath, {
-      enforceCanonicalContainment: true,
-    });
+    const target = await ensureInsideMarketplaceRoot(
+      await buildMarketplaceRootContext({
+        logicalRootDir: cloned.rootDir,
+        origin: "remote",
+      }),
+      subPath,
+    );
     if (!target.ok) {
       await cloned.cleanup();
       return target;
@@ -1115,6 +1134,10 @@ export async function installPluginFromMarketplace(
 
   let installCleanup: (() => Promise<void>) | undefined;
   try {
+    const marketplaceRootContext = await buildMarketplaceRootContext({
+      logicalRootDir: loaded.marketplace.rootDir,
+      origin: loaded.marketplace.origin,
+    });
     const entry = loaded.marketplace.manifest.plugins.find(
       (plugin) => plugin.name === params.plugin,
     );
@@ -1130,8 +1153,7 @@ export async function installPluginFromMarketplace(
 
     const resolved = await resolveMarketplaceEntryInstallPath({
       source: entry.source,
-      marketplaceRootDir: loaded.marketplace.rootDir,
-      marketplaceOrigin: loaded.marketplace.origin,
+      marketplaceRootContext,
       logger: params.logger,
       timeoutMs: params.timeoutMs,
     });
