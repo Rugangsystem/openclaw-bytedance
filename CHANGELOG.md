@@ -94,6 +94,7 @@ Docs: https://docs.openclaw.ai
 - Agents/workspace: respect `agents.defaults.workspace` for non-default agents by resolving them under the configured base path instead of falling back to `workspace-<id>`. (#59858) Thanks @joelnishanth.
 - Config/All Settings: keep the raw config view intact when sensitive fields are blank instead of corrupting or dropping the snapshot during redaction. (#28214) thanks @solodmd.
 - Plugins/runtime: honor explicit capability allowlists during fallback speech, media-understanding, and image-generation provider loading so bundled capability plugins do not bypass restrictive `plugins.allow` config. (#52262) Thanks @PerfectPan.
+- Plugins/marketplace: block remote marketplace symlink escapes without rewriting ordinary local marketplace install paths. (#60556) Thanks @eleqtrizit.
 
 ## 2026.4.2
 

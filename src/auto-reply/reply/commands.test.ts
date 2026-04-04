@@ -950,8 +950,8 @@ describe("/approve command", () => {
             config: {
               ...telegramCommandTestPlugin.config,
               defaultAccountId: (cfg) =>
-                ((cfg.channels?.telegram as { defaultAccount?: string } | undefined)?.defaultAccount ??
-                  DEFAULT_ACCOUNT_ID),
+                (cfg.channels?.telegram as { defaultAccount?: string } | undefined)
+                  ?.defaultAccount ?? DEFAULT_ACCOUNT_ID,
             },
           },
           source: "test",
@@ -1840,8 +1840,8 @@ describe("handleCommands /config configWrites gating", () => {
             config: {
               ...telegramCommandTestPlugin.config,
               defaultAccountId: (cfg) =>
-                ((cfg.channels?.telegram as { defaultAccount?: string } | undefined)?.defaultAccount ??
-                  DEFAULT_ACCOUNT_ID),
+                (cfg.channels?.telegram as { defaultAccount?: string } | undefined)
+                  ?.defaultAccount ?? DEFAULT_ACCOUNT_ID,
             },
           },
         },
@@ -2180,8 +2180,8 @@ describe("handleCommands /allowlist", () => {
             config: {
               ...telegramCommandTestPlugin.config,
               defaultAccountId: (cfg) =>
-                ((cfg.channels?.telegram as { defaultAccount?: string } | undefined)?.defaultAccount ??
-                  DEFAULT_ACCOUNT_ID),
+                (cfg.channels?.telegram as { defaultAccount?: string } | undefined)
+                  ?.defaultAccount ?? DEFAULT_ACCOUNT_ID,
             },
           },
         },
@@ -2252,8 +2252,8 @@ describe("handleCommands /allowlist", () => {
             config: {
               ...telegramCommandTestPlugin.config,
               defaultAccountId: (cfg) =>
-                ((cfg.channels?.telegram as { defaultAccount?: string } | undefined)?.defaultAccount ??
-                  DEFAULT_ACCOUNT_ID),
+                (cfg.channels?.telegram as { defaultAccount?: string } | undefined)
+                  ?.defaultAccount ?? DEFAULT_ACCOUNT_ID,
             },
           },
         },

@@ -17,8 +17,10 @@ function resolveConfiguredAllowFrom(cfg: OpenClawConfig, accountId: string): str
   const allowFrom =
     accountId === DEFAULT_ACCOUNT_ID
       ? channelCfg.allowFrom
-      : channelCfg.accounts?.[accountId]?.allowFrom ?? channelCfg.allowFrom;
-  return Array.isArray(allowFrom) ? allowFrom.filter((value) => value !== "*").map(normalizeE164) : [];
+      : (channelCfg.accounts?.[accountId]?.allowFrom ?? channelCfg.allowFrom);
+  return Array.isArray(allowFrom)
+    ? allowFrom.filter((value) => value !== "*").map(normalizeE164)
+    : [];
 }
 
 function getSessionRecipients(cfg: OpenClawConfig) {
