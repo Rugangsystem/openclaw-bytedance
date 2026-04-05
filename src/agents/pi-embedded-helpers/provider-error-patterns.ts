@@ -107,10 +107,12 @@ function resolveProviderRuntimeHooks(): ProviderRuntimeHooks | null {
       cachedProviderRuntimeHooks = null;
       return cachedProviderRuntimeHooks;
     }
+    const classifyProviderFailoverReasonWithPlugin = hooks.classifyProviderFailoverReasonWithPlugin;
+    const matchesProviderContextOverflowWithPlugin = hooks.matchesProviderContextOverflowWithPlugin;
     cachedProviderRuntimeHooks = {
       classifyProviderFailoverReasonWithPlugin: ({ context }) =>
-        hooks.classifyProviderFailoverReasonWithPlugin({ context }) ?? null,
-      matchesProviderContextOverflowWithPlugin: hooks.matchesProviderContextOverflowWithPlugin,
+        classifyProviderFailoverReasonWithPlugin({ context }) ?? null,
+      matchesProviderContextOverflowWithPlugin,
     };
   } catch {
     cachedProviderRuntimeHooks = null;
