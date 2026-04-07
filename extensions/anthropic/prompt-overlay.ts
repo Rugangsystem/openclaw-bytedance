@@ -1,4 +1,6 @@
-const ANTHROPIC_PROVIDER_ID = "anthropic";
+import { CLAUDE_CLI_BACKEND_ID } from "./cli-shared.js";
+
+const ANTHROPIC_PROVIDER_IDS = new Set(["anthropic", CLAUDE_CLI_BACKEND_ID]);
 const ANTHROPIC_FRONTIER_MODEL_PREFIXES = ["claude-sonnet-4", "claude-opus-4"];
 
 export const ANTHROPIC_FRONTIER_INTERACTION_STYLE = `## Interaction Style
@@ -39,7 +41,7 @@ export function shouldApplyAnthropicPromptOverlay(params: {
   modelId?: string;
 }): boolean {
   return (
-    params.modelProviderId === ANTHROPIC_PROVIDER_ID &&
+    ANTHROPIC_PROVIDER_IDS.has(params.modelProviderId ?? "") &&
     matchesAnthropicFrontierModel(params.modelId)
   );
 }

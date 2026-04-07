@@ -55,6 +55,14 @@ describe("anthropic provider replay hooks", () => {
 
   it("registers frontier Claude prompt contributions", async () => {
     const provider = await registerSingleProviderPlugin(anthropicPlugin);
+    const contribution = {
+      stablePrefix: ANTHROPIC_FRONTIER_OUTPUT_CONTRACT,
+      sectionOverrides: {
+        interaction_style: ANTHROPIC_FRONTIER_INTERACTION_STYLE,
+        tool_call_style: ANTHROPIC_FRONTIER_TOOL_CALL_STYLE,
+        execution_bias: ANTHROPIC_FRONTIER_EXECUTION_BIAS,
+      },
+    };
 
     expect(
       provider.resolveSystemPromptContribution?.({
@@ -68,14 +76,21 @@ describe("anthropic provider replay hooks", () => {
         runtimeCapabilities: undefined,
         agentId: undefined,
       } as never),
-    ).toEqual({
-      stablePrefix: ANTHROPIC_FRONTIER_OUTPUT_CONTRACT,
-      sectionOverrides: {
-        interaction_style: ANTHROPIC_FRONTIER_INTERACTION_STYLE,
-        tool_call_style: ANTHROPIC_FRONTIER_TOOL_CALL_STYLE,
-        execution_bias: ANTHROPIC_FRONTIER_EXECUTION_BIAS,
-      },
-    });
+    ).toEqual(contribution);
+
+    expect(
+      provider.resolveSystemPromptContribution?.({
+        config: undefined,
+        agentDir: undefined,
+        workspaceDir: undefined,
+        provider: "claude-cli",
+        modelId: "claude-sonnet-4-6",
+        promptMode: "full",
+        runtimeChannel: undefined,
+        runtimeCapabilities: undefined,
+        agentId: undefined,
+      } as never),
+    ).toEqual(contribution);
 
     expect(
       provider.resolveSystemPromptContribution?.({

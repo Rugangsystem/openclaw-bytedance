@@ -465,7 +465,7 @@ export function registerAnthropicPlugin(api: OpenClawPluginApi): void {
         : undefined,
     resolveSystemPromptContribution: (ctx) =>
       resolveAnthropicSystemPromptContribution({
-        modelProviderId: PROVIDER_ID,
+        modelProviderId: ctx.provider,
         modelId: ctx.modelId,
       }),
     buildReplayPolicy: buildAnthropicReplayPolicy,
