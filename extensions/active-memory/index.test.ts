@@ -59,6 +59,10 @@ describe("active-memory plugin", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    api.pluginConfig = {
+      agents: ["main"],
+      logging: true,
+    };
     hoisted.sessionStore["agent:main:main"] = {
       sessionId: "s-main",
       updatedAt: 0,
@@ -123,6 +127,46 @@ describe("active-memory plugin", () => {
 
     expect(result).toBeUndefined();
     expect(runEmbeddedPiAgent).not.toHaveBeenCalled();
+  });
+
+  it("defaults to direct-style sessions only", async () => {
+    const result = await hooks.before_prompt_build(
+      { prompt: "what wings should we order?", messages: [] },
+      {
+        agentId: "main",
+        trigger: "user",
+        sessionKey: "agent:main:telegram:group:-100123",
+        messageProvider: "telegram",
+        channelId: "telegram",
+      },
+    );
+
+    expect(result).toBeUndefined();
+    expect(runEmbeddedPiAgent).not.toHaveBeenCalled();
+  });
+
+  it("runs for group sessions when group chat types are explicitly allowed", async () => {
+    api.pluginConfig = {
+      agents: ["main"],
+      allowedChatTypes: ["direct", "group"],
+    };
+    plugin.register(api as unknown as OpenClawPluginApi);
+
+    const result = await hooks.before_prompt_build(
+      { prompt: "what wings should we order?", messages: [] },
+      {
+        agentId: "main",
+        trigger: "user",
+        sessionKey: "agent:main:telegram:group:-100123",
+        messageProvider: "telegram",
+        channelId: "telegram",
+      },
+    );
+
+    expect(runEmbeddedPiAgent).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({
+      appendSystemContext: expect.stringContaining("<active_memory>"),
+    });
   });
 
   it("injects system context on a successful recall hit", async () => {
@@ -195,6 +239,27 @@ describe("active-memory plugin", () => {
       provider: "qwen",
       model: "glm-5",
     });
+  });
+
+  it("can disable default remote model fallback", async () => {
+    api.pluginConfig = {
+      agents: ["main"],
+      modelFallbackPolicy: "resolved-only",
+    };
+    plugin.register(api as unknown as OpenClawPluginApi);
+
+    const result = await hooks.before_prompt_build(
+      { prompt: "what wings should i order? no fallback", messages: [] },
+      {
+        agentId: "main",
+        trigger: "user",
+        sessionKey: "agent:main:resolved-only",
+        messageProvider: "webchat",
+      },
+    );
+
+    expect(result).toBeUndefined();
+    expect(runEmbeddedPiAgent).not.toHaveBeenCalled();
   });
 
   it("persists a readable debug summary alongside the status line", async () => {

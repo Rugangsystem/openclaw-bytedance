@@ -107,6 +107,8 @@ const RECALLED_CONTEXT_LINE_PATTERNS = [
 type ActiveRecallPluginConfig = {
   agents?: string[];
   model?: string;
+  modelFallbackPolicy?: "default-remote" | "resolved-only";
+  allowedChatTypes?: Array<"direct" | "group" | "channel">;
   timeoutMs?: number;
   queryMode?: "message" | "recent" | "full";
   maxMemories?: number;
@@ -126,6 +128,8 @@ type ActiveRecallPluginConfig = {
 type ResolvedActiveRecallPluginConfig = {
   agents: string[];
   model?: string;
+  modelFallbackPolicy: "default-remote" | "resolved-only";
+  allowedChatTypes: Array<"direct" | "group" | "channel">;
   timeoutMs: number;
   queryMode: "message" | "recent" | "full";
   maxMemories: number;
@@ -170,6 +174,8 @@ type CachedActiveRecallResult = {
   expiresAt: number;
   result: ActiveRecallResult;
 };
+
+type ActiveMemoryChatType = "direct" | "group" | "channel";
 
 const ACTIVE_MEMORY_STATUS_PREFIX = "🧩 Active Memory:";
 const ACTIVE_MEMORY_DEBUG_PREFIX = "🔎 Active Memory Debug:";
@@ -221,11 +227,20 @@ function normalizePluginConfig(pluginConfig: unknown): ResolvedActiveRecallPlugi
   const raw = (
     pluginConfig && typeof pluginConfig === "object" ? pluginConfig : {}
   ) as ActiveRecallPluginConfig;
+  const allowedChatTypes = Array.isArray(raw.allowedChatTypes)
+    ? raw.allowedChatTypes.filter(
+        (value): value is ActiveMemoryChatType =>
+          value === "direct" || value === "group" || value === "channel",
+      )
+    : [];
   return {
     agents: Array.isArray(raw.agents)
       ? raw.agents.map((agentId) => String(agentId).trim()).filter(Boolean)
       : [],
     model: typeof raw.model === "string" && raw.model.trim() ? raw.model.trim() : undefined,
+    modelFallbackPolicy:
+      raw.modelFallbackPolicy === "resolved-only" ? "resolved-only" : "default-remote",
+    allowedChatTypes: allowedChatTypes.length > 0 ? allowedChatTypes : ["direct"],
     timeoutMs: clampInt(
       parseOptionalPositiveInt(raw.timeoutMs, DEFAULT_TIMEOUT_MS),
       DEFAULT_TIMEOUT_MS,
@@ -290,6 +305,43 @@ function isEligibleInteractiveSession(ctx: {
     return true;
   }
   return Boolean(ctx.channelId && ctx.channelId.trim());
+}
+
+function resolveChatType(ctx: {
+  sessionKey?: string;
+  messageProvider?: string;
+}): ActiveMemoryChatType | undefined {
+  const sessionKey = ctx.sessionKey?.trim().toLowerCase();
+  if (sessionKey) {
+    if (sessionKey.includes(":group:")) {
+      return "group";
+    }
+    if (sessionKey.includes(":channel:")) {
+      return "channel";
+    }
+    if (sessionKey.includes(":direct:") || sessionKey.includes(":dm:")) {
+      return "direct";
+    }
+  }
+  const provider = (ctx.messageProvider ?? "").trim().toLowerCase();
+  if (provider === "webchat") {
+    return "direct";
+  }
+  return undefined;
+}
+
+function isAllowedChatType(
+  config: ResolvedActiveRecallPluginConfig,
+  ctx: {
+    sessionKey?: string;
+    messageProvider?: string;
+  },
+): boolean {
+  const chatType = resolveChatType(ctx);
+  if (!chatType) {
+    return false;
+  }
+  return config.allowedChatTypes.includes(chatType);
 }
 
 function buildCacheKey(params: {
@@ -759,7 +811,14 @@ function getModelRef(
   const currentRunModel =
     ctx?.modelProviderId && ctx?.modelId ? `${ctx.modelProviderId}/${ctx.modelId}` : undefined;
   const agentPrimaryModel = resolveAgentEffectiveModelPrimary(api.config, agentId);
-  const configured = config.model || currentRunModel || agentPrimaryModel || DEFAULT_MODEL_REF;
+  const configured =
+    config.model ||
+    currentRunModel ||
+    agentPrimaryModel ||
+    (config.modelFallbackPolicy === "default-remote" ? DEFAULT_MODEL_REF : undefined);
+  if (!configured) {
+    return undefined;
+  }
   const parsed = parseModelRef(configured, DEFAULT_PROVIDER);
   if (parsed) {
     return parsed;
@@ -792,6 +851,9 @@ async function runRecallSidecar(params: {
     modelProviderId: params.currentModelProviderId,
     modelId: params.currentModelId,
   });
+  if (!modelRef) {
+    return { rawReply: "NONE" };
+  }
   const sidecarSessionId = `active-memory-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
   const sidecarScope = params.sessionKey ?? params.sessionId ?? crypto.randomUUID();
   const sidecarSuffix = `active-memory:${crypto
@@ -1020,6 +1082,14 @@ export default definePluginEntry({
         return;
       }
       if (!isEligibleInteractiveSession(ctx)) {
+        await persistPluginStatusLines({
+          api,
+          agentId: effectiveAgentId,
+          sessionKey: ctx.sessionKey,
+        });
+        return;
+      }
+      if (!isAllowedChatType(config, ctx)) {
         await persistPluginStatusLines({
           api,
           agentId: effectiveAgentId,

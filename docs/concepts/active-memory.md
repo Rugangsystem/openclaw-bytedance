@@ -38,6 +38,8 @@ Start with this in `openclaw.json`:
         enabled: true,
         config: {
           agents: ["main"],
+          allowedChatTypes: ["direct"],
+          modelFallbackPolicy: "default-remote",
           queryMode: "recent",
           timeoutMs: 8000,
           maxMemories: 2,
@@ -60,7 +62,9 @@ What this means:
 
 - `plugins.entries.active-memory.enabled: true` turns the plugin on
 - `config.agents: ["main"]` opts only the `main` agent into active memory
-- if `config.model` is unset, active memory inherits the current session model
+- `config.allowedChatTypes: ["direct"]` keeps active memory on for direct-message style sessions only by default
+- if `config.model` is unset, active memory inherits the current session model first
+- `config.modelFallbackPolicy: "default-remote"` keeps the built-in remote fallback as the default when no explicit or inherited model is available
 - active memory still runs only on eligible interactive persistent chat sessions
 
 ## How to see it
@@ -121,12 +125,42 @@ plugin enabled
 +
 agent id targeted
 +
+allowed chat type
++
 eligible interactive persistent chat session
 =
 active memory runs
 ```
 
 If any of those fail, active memory does not run.
+
+## Session types
+
+`config.allowedChatTypes` controls which kinds of conversations may run Active
+Memory at all.
+
+The default is:
+
+```json5
+allowedChatTypes: ["direct"]
+```
+
+That means Active Memory runs by default in direct-message style sessions, but
+not in group or channel sessions unless you opt them in explicitly.
+
+Examples:
+
+```json5
+allowedChatTypes: ["direct"]
+```
+
+```json5
+allowedChatTypes: ["direct", "group"]
+```
+
+```json5
+allowedChatTypes: ["direct", "group", "channel"]
+```
 
 ## Where it runs
 
@@ -186,6 +220,35 @@ If the connection is weak, it should return `NONE`.
 ## Query modes
 
 `config.queryMode` controls how much conversation the blocking memory subagent sees.
+
+## Model fallback policy
+
+If `config.model` is unset, Active Memory tries to resolve a model in this order:
+
+```text
+explicit plugin model
+-> current session model
+-> agent primary model
+-> optional built-in remote fallback
+```
+
+`config.modelFallbackPolicy` controls the last step.
+
+Default:
+
+```json5
+modelFallbackPolicy: "default-remote"
+```
+
+Other option:
+
+```json5
+modelFallbackPolicy: "resolved-only"
+```
+
+Use `resolved-only` if you want Active Memory to skip recall instead of falling
+back to the built-in remote default when no explicit or inherited model is
+available.
 
 ### `message`
 
@@ -315,17 +378,17 @@ plugins.entries.active-memory
 
 The most important fields are:
 
-| Key                         | Type                              | Meaning                                                                              |
-| --------------------------- | --------------------------------- | ------------------------------------------------------------------------------------ |
-| `enabled`                   | `boolean`                         | Enables the plugin itself                                                            |
-| `config.agents`             | `string[]`                        | Agent ids that may use active memory                                                 |
+| Key                         | Type                              | Meaning                                                                                               |
+| --------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `enabled`                   | `boolean`                         | Enables the plugin itself                                                                             |
+| `config.agents`             | `string[]`                        | Agent ids that may use active memory                                                                  |
 | `config.model`              | `string`                          | Optional blocking memory subagent model ref; when unset, active memory uses the current session model |
-| `config.queryMode`          | `"message" \| "recent" \| "full"` | Controls how much conversation the blocking memory subagent sees                     |
-| `config.timeoutMs`          | `number`                          | Hard timeout for the blocking memory subagent                                        |
-| `config.maxMemories`        | `number`                          | Maximum recalled bullets to inject                                                   |
-| `config.logging`            | `boolean`                         | Emits active memory logs while tuning                                                |
-| `config.persistTranscripts` | `boolean`                         | Keeps blocking memory subagent transcripts on disk instead of deleting temp files    |
-| `config.transcriptDir`      | `string`                          | Relative blocking memory subagent transcript directory under the agent sessions folder |
+| `config.queryMode`          | `"message" \| "recent" \| "full"` | Controls how much conversation the blocking memory subagent sees                                      |
+| `config.timeoutMs`          | `number`                          | Hard timeout for the blocking memory subagent                                                         |
+| `config.maxMemories`        | `number`                          | Maximum recalled bullets to inject                                                                    |
+| `config.logging`            | `boolean`                         | Emits active memory logs while tuning                                                                 |
+| `config.persistTranscripts` | `boolean`                         | Keeps blocking memory subagent transcripts on disk instead of deleting temp files                     |
+| `config.transcriptDir`      | `string`                          | Relative blocking memory subagent transcript directory under the agent sessions folder                |
 
 Useful tuning fields:
 

@@ -11,6 +11,17 @@
         "items": { "type": "string" }
       },
       "model": { "type": "string" },
+      "modelFallbackPolicy": {
+        "type": "string",
+        "enum": ["default-remote", "resolved-only"]
+      },
+      "allowedChatTypes": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": ["direct", "group", "channel"]
+        }
+      },
       "timeoutMs": { "type": "integer", "minimum": 250 },
       "queryMode": {
         "type": "string",
@@ -38,6 +49,14 @@
     "model": {
       "label": "Memory Model",
       "help": "Provider/model used for the blocking memory subagent."
+    },
+    "modelFallbackPolicy": {
+      "label": "Model Fallback Policy",
+      "help": "Choose whether Active Memory falls back to the built-in remote default model when no explicit or inherited model is available."
+    },
+    "allowedChatTypes": {
+      "label": "Allowed Chat Types",
+      "help": "Choose which session types may run Active Memory. Defaults to direct-message style sessions only."
     },
     "timeoutMs": {
       "label": "Timeout (ms)"
