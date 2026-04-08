@@ -241,9 +241,18 @@ describe("active-memory plugin", () => {
       logging: true,
     };
     plugin.register(api as unknown as OpenClawPluginApi);
-    runEmbeddedPiAgent.mockImplementation(
-      async () => await new Promise((resolve) => setTimeout(() => resolve({ payloads: [] }), 300)),
-    );
+    let lastAbortSignal: AbortSignal | undefined;
+    runEmbeddedPiAgent.mockImplementation(async (params: { abortSignal?: AbortSignal }) => {
+      lastAbortSignal = params.abortSignal;
+      return await new Promise((resolve, reject) => {
+        const abortHandler = () => reject(new Error("aborted"));
+        params.abortSignal?.addEventListener("abort", abortHandler, { once: true });
+        setTimeout(() => {
+          params.abortSignal?.removeEventListener("abort", abortHandler);
+          resolve({ payloads: [] });
+        }, 2_000);
+      });
+    });
 
     await hooks.before_prompt_build(
       { prompt: "what wings should i order? timeout test", messages: [] },
@@ -265,6 +274,7 @@ describe("active-memory plugin", () => {
     );
 
     expect(hoisted.updateSessionStore).toHaveBeenCalledTimes(2);
+    expect(lastAbortSignal?.aborted).toBe(true);
     const infoLines = vi
       .mocked(api.logger.info)
       .mock.calls.map((call: unknown[]) => String(call[0]));

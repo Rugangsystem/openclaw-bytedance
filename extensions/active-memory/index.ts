@@ -695,11 +695,7 @@ function getModelRef(
   const currentRunModel =
     ctx?.modelProviderId && ctx?.modelId ? `${ctx.modelProviderId}/${ctx.modelId}` : undefined;
   const agentPrimaryModel = resolveAgentEffectiveModelPrimary(api.config, agentId);
-  const configured =
-    config.model ||
-    currentRunModel ||
-    agentPrimaryModel ||
-    DEFAULT_MODEL_REF;
+  const configured = config.model || currentRunModel || agentPrimaryModel || DEFAULT_MODEL_REF;
   const parsed = parseModelRef(configured, DEFAULT_PROVIDER);
   if (parsed) {
     return parsed;
@@ -707,10 +703,12 @@ function getModelRef(
   const parsedAgentPrimary = agentPrimaryModel
     ? parseModelRef(agentPrimaryModel, DEFAULT_PROVIDER)
     : undefined;
-  return parsedAgentPrimary ?? {
-    provider: DEFAULT_PROVIDER,
-    model: configured,
-  };
+  return (
+    parsedAgentPrimary ?? {
+      provider: DEFAULT_PROVIDER,
+      model: configured,
+    }
+  );
 }
 
 async function runRecallSidecar(params: {
@@ -721,6 +719,7 @@ async function runRecallSidecar(params: {
   query: string;
   currentModelProviderId?: string;
   currentModelId?: string;
+  abortSignal?: AbortSignal;
 }): Promise<{ rawReply: string; transcriptPath?: string }> {
   const workspaceDir = resolveAgentWorkspaceDir(params.api.config, params.agentId);
   const agentDir = resolveAgentDir(params.api.config, params.agentId);
@@ -793,6 +792,7 @@ async function runRecallSidecar(params: {
       thinkLevel: "off",
       reasoningLevel: "off",
       silentExpected: true,
+      abortSignal: params.abortSignal,
     });
     const rawReply = (result.payloads ?? [])
       .map((payload) => payload.text?.trim() ?? "")
@@ -849,38 +849,31 @@ async function maybeResolveActiveRecall(params: {
     );
   }
 
-  try {
-    const recallPromise = runRecallSidecar(params).then(({ rawReply, transcriptPath }) => {
-      const memories = toRecallCandidates({
-        rawReply,
-        query: params.query,
-        config: params.config,
-      });
-      if (params.config.logging && transcriptPath) {
-        params.api.logger.info?.(`${logPrefix} transcript=${transcriptPath}`);
-      }
-      return {
-        status: memories.length > 0 ? ("ok" as const) : ("empty" as const),
-        elapsedMs: Date.now() - startedAt,
-        rawReply,
-        memories,
-      } satisfies ActiveRecallResult;
-    });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => {
+    controller.abort(new Error(`active-memory timeout after ${params.config.timeoutMs}ms`));
+  }, params.config.timeoutMs);
+  timeoutId.unref?.();
 
-    const result = await Promise.race([
-      recallPromise,
-      new Promise<ActiveRecallResult>((resolve) =>
-        setTimeout(
-          () =>
-            resolve({
-              status: "timeout",
-              elapsedMs: Date.now() - startedAt,
-              memories: [],
-            }),
-          params.config.timeoutMs,
-        ),
-      ),
-    ]);
+  try {
+    const { rawReply, transcriptPath } = await runRecallSidecar({
+      ...params,
+      abortSignal: controller.signal,
+    });
+    const memories = toRecallCandidates({
+      rawReply,
+      query: params.query,
+      config: params.config,
+    });
+    if (params.config.logging && transcriptPath) {
+      params.api.logger.info?.(`${logPrefix} transcript=${transcriptPath}`);
+    }
+    const result = {
+      status: memories.length > 0 ? ("ok" as const) : ("empty" as const),
+      elapsedMs: Date.now() - startedAt,
+      rawReply,
+      memories,
+    } satisfies ActiveRecallResult;
     if (params.config.logging) {
       params.api.logger.info?.(
         `${logPrefix} done status=${result.status} elapsedMs=${String(result.elapsedMs)} memories=${String(result.memories.length)}`,
@@ -898,6 +891,25 @@ async function maybeResolveActiveRecall(params: {
     }
     return result;
   } catch (error) {
+    if (controller.signal.aborted) {
+      const result: ActiveRecallResult = {
+        status: "timeout",
+        elapsedMs: Date.now() - startedAt,
+        memories: [],
+      };
+      if (params.config.logging) {
+        params.api.logger.info?.(
+          `${logPrefix} done status=${result.status} elapsedMs=${String(result.elapsedMs)} memories=${String(result.memories.length)}`,
+        );
+      }
+      await persistPluginStatusLines({
+        api: params.api,
+        agentId: params.agentId,
+        sessionKey: params.sessionKey,
+        statusLine: buildPluginStatusLine({ result, config: params.config }),
+      });
+      return result;
+    }
     const message = error instanceof Error ? error.message : String(error);
     if (params.config.logging) {
       params.api.logger.warn?.(`${logPrefix} failed error=${message}`);
@@ -914,6 +926,8 @@ async function maybeResolveActiveRecall(params: {
       statusLine: buildPluginStatusLine({ result, config: params.config }),
     });
     return result;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
