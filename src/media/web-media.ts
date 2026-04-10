@@ -19,7 +19,13 @@ import {
   LocalMediaAccessError,
   type LocalMediaAccessErrorCode,
 } from "./local-media-access.js";
-import { detectMime, extensionForMime, kindFromMime, normalizeMimeType } from "./mime.js";
+import {
+  detectMime,
+  extensionForMime,
+  getFileExtension,
+  kindFromMime,
+  normalizeMimeType,
+} from "./mime.js";
 
 export { getDefaultLocalRoots, LocalMediaAccessError };
 export type { LocalMediaAccessErrorCode };
@@ -103,10 +109,27 @@ function isHeicSource(opts: { contentType?: string; fileName?: string }): boolea
 }
 
 function assertHostReadMediaAllowed(params: {
+  sniffedContentType?: string;
   contentType?: string;
+  filePath?: string;
   kind: MediaKind | undefined;
 }): void {
-  if (params.kind === "image" || params.kind === "audio" || params.kind === "video") {
+  const sniffedKind = kindFromMime(params.sniffedContentType);
+  if (sniffedKind === "image" || sniffedKind === "audio" || sniffedKind === "video") {
+    return;
+  }
+  const sniffedMime = normalizeMimeType(params.sniffedContentType);
+  if (
+    sniffedKind === "document" &&
+    sniffedMime &&
+    HOST_READ_ALLOWED_DOCUMENT_MIMES.has(sniffedMime)
+  ) {
+    return;
+  }
+  if (
+    sniffedMime === "application/x-cfb" &&
+    [".doc", ".ppt", ".xls"].includes(getFileExtension(params.filePath) ?? "")
+  ) {
     return;
   }
   const normalizedMime = normalizeMimeType(params.contentType);
@@ -115,11 +138,14 @@ function assertHostReadMediaAllowed(params: {
     normalizedMime &&
     HOST_READ_ALLOWED_DOCUMENT_MIMES.has(normalizedMime)
   ) {
-    return;
+    throw new LocalMediaAccessError(
+      "path-not-allowed",
+      `Host-local media sends require buffer-verified media/document types (got fallback ${normalizedMime}).`,
+    );
   }
   throw new LocalMediaAccessError(
     "path-not-allowed",
-    `Host-local media sends only allow images, audio, video, PDF, and Office documents (got ${normalizedMime ?? "unknown"}).`,
+    `Host-local media sends only allow buffer-verified images, audio, video, PDF, and Office documents (got ${sniffedMime ?? normalizedMime ?? "unknown"}).`,
   );
 }
 
@@ -357,10 +383,16 @@ async function loadWebMediaInternal(
       throw err;
     }
   }
+  const sniffedMime = await detectMime({ buffer: data });
   const mime = await detectMime({ buffer: data, filePath: mediaUrl });
   const kind = kindFromMime(mime);
   if (hostReadCapability) {
-    assertHostReadMediaAllowed({ contentType: mime, kind });
+    assertHostReadMediaAllowed({
+      sniffedContentType: sniffedMime,
+      contentType: mime,
+      filePath: mediaUrl,
+      kind,
+    });
   }
   let fileName = path.basename(mediaUrl) || undefined;
   if (fileName && !path.extname(fileName) && mime) {

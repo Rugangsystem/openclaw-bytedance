@@ -2141,6 +2141,51 @@ describe("chat view", () => {
     expect(container.textContent).toContain("Done");
   });
 
+  it("allows Windows file URLs inside allowed preview roots", async () => {
+    resetAssistantAttachmentAvailabilityCacheForTest();
+    const fetchMock = vi.fn(async (url: string) => {
+      if (!url.includes("meta=1")) {
+        throw new Error(`Unexpected fetch: ${url}`);
+      }
+      return {
+        ok: true,
+        json: async () => ({ available: true }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          showToolCalls: false,
+          basePath: "/openclaw",
+          localMediaPreviewRoots: ["C:\\tmp\\openclaw"],
+          onRequestUpdate: () => undefined,
+          messages: [
+            {
+              id: "assistant-windows-file-url",
+              role: "assistant",
+              content: "Windows image\nMEDIA:file:///C:/tmp/openclaw/test%20image.png",
+              timestamp: Date.now(),
+            },
+          ],
+        }),
+      ),
+      container,
+    );
+
+    await Promise.resolve();
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/openclaw/__openclaw__/assistant-media?source=%2FC%3A%2Ftmp%2Fopenclaw%2Ftest%2520image.png&meta=1",
+      expect.objectContaining({ credentials: "same-origin", method: "GET" }),
+    );
+    expect(container.textContent).not.toContain("Outside allowed folders");
+    vi.unstubAllGlobals();
+  });
+
   it("routes inline canvas blocks through the scoped canvas host when available", () => {
     const container = document.createElement("div");
     render(

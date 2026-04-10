@@ -635,7 +635,11 @@ function normalizeLocalAttachmentPath(source: string): string | null {
   if (trimmed.startsWith("file://")) {
     try {
       const url = new URL(trimmed);
-      return decodeURIComponent(url.pathname);
+      const pathname = decodeURIComponent(url.pathname);
+      if (/^\/[a-zA-Z]:\//.test(pathname)) {
+        return pathname.slice(1);
+      }
+      return pathname;
     } catch {
       return null;
     }
@@ -646,6 +650,17 @@ function normalizeLocalAttachmentPath(source: string): string | null {
   return trimmed;
 }
 
+function canonicalizeLocalPathForComparison(value: string): string {
+  let slashNormalized = value.replace(/\\/g, "/").replace(/\/+$/, "");
+  if (/^\/[a-zA-Z]:\//.test(slashNormalized)) {
+    slashNormalized = slashNormalized.slice(1);
+  }
+  if (/^[a-zA-Z]:\//.test(slashNormalized)) {
+    return `${slashNormalized[0]?.toLowerCase() ?? ""}${slashNormalized.slice(1)}`;
+  }
+  return slashNormalized;
+}
+
 function isLocalAttachmentPreviewAllowed(
   source: string,
   localMediaPreviewRoots: readonly string[],
@@ -654,13 +669,12 @@ function isLocalAttachmentPreviewAllowed(
   if (!normalizedSource) {
     return false;
   }
+  const comparableSource = canonicalizeLocalPathForComparison(normalizedSource);
   return localMediaPreviewRoots.some((root) => {
-    const normalizedRoot = root.trim().replace(/[\\/]+$/, "");
+    const normalizedRoot = canonicalizeLocalPathForComparison(root.trim());
     return (
       normalizedRoot.length > 0 &&
-      (normalizedSource === normalizedRoot ||
-        normalizedSource.startsWith(`${normalizedRoot}/`) ||
-        normalizedSource.startsWith(`${normalizedRoot}\\`))
+      (comparableSource === normalizedRoot || comparableSource.startsWith(`${normalizedRoot}/`))
     );
   });
 }

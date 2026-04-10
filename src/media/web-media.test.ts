@@ -170,6 +170,21 @@ describe("loadWebMedia", () => {
     });
   });
 
+  it("rejects renamed host-read text files even when the extension looks allowed", async () => {
+    const disguisedPdf = path.join(fixtureRoot, "secret.pdf");
+    await fs.writeFile(disguisedPdf, "secret", "utf8");
+    await expect(
+      loadWebMedia(disguisedPdf, {
+        maxBytes: 1024 * 1024,
+        localRoots: "any",
+        readFile: async (filePath) => await fs.readFile(filePath),
+        hostReadCapability: true,
+      }),
+    ).rejects.toMatchObject({
+      code: "path-not-allowed",
+    });
+  });
+
   it("rejects traversal-style canvas media paths before filesystem access", async () => {
     await expect(
       loadWebMedia(`${CANVAS_HOST_PATH}/documents/../collection.media/tiny.png`),
