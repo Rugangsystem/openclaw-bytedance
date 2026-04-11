@@ -254,6 +254,15 @@ describe("message-normalizer", () => {
       expect(result.content).toEqual([]);
     });
 
+    it("preserves relative MEDIA references as visible text instead of dropping the assistant turn", () => {
+      const result = normalizeMessage({
+        role: "assistant",
+        content: "MEDIA:chart.png",
+      });
+
+      expect(result.content).toEqual([{ type: "text", text: "MEDIA:chart.png" }]);
+    });
+
     it("strips reply_to_current without rendering a quoted preview", () => {
       const result = normalizeMessage({
         role: "assistant",

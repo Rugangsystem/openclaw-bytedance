@@ -58,6 +58,22 @@ function isRenderableAssistantAttachment(url: string): boolean {
   );
 }
 
+function shouldPreserveRelativeAssistantAttachment(url: string): boolean {
+  const trimmed = url.trim();
+  if (!trimmed) {
+    return false;
+  }
+  return (
+    !/^https?:\/\//i.test(trimmed) &&
+    !/^data:(?:image|audio|video)\//i.test(trimmed) &&
+    !/^\/(?:__openclaw__|media)\//.test(trimmed) &&
+    !trimmed.startsWith("file://") &&
+    !trimmed.startsWith("~") &&
+    !trimmed.startsWith("/") &&
+    !/^[a-zA-Z]:[\\/]/.test(trimmed)
+  );
+}
+
 const MIME_BY_EXT: Record<string, string> = {
   png: "image/png",
   jpg: "image/jpeg",
@@ -156,6 +172,9 @@ function expandTextContent(text: string): {
   for (const segment of segments) {
     if (segment.type === "media") {
       if (!isRenderableAssistantAttachment(segment.url)) {
+        if (shouldPreserveRelativeAssistantAttachment(segment.url)) {
+          parts.push({ type: "text", text: `MEDIA:${segment.url}` });
+        }
         continue;
       }
       const inferred = inferAttachmentKind(segment.url);
@@ -208,6 +227,10 @@ function expandTextContent(text: string): {
     content:
       content.length > 0
         ? content
+        : (parsed.mediaUrls ?? []).some((url) => shouldPreserveRelativeAssistantAttachment(url))
+          ? (parsed.mediaUrls ?? [])
+              .filter((url) => shouldPreserveRelativeAssistantAttachment(url))
+              .map((url) => ({ type: "text" as const, text: `MEDIA:${url}` }))
         : replyTarget === null && !audioAsVoice && parsed.text.trim().length > 0
           ? [{ type: "text", text: parsed.text }]
           : [],
