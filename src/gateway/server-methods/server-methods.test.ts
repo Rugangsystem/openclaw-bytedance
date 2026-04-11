@@ -16,7 +16,12 @@ import { validateExecApprovalRequestParams } from "../protocol/index.js";
 import { waitForAgentJob } from "./agent-job.js";
 import { injectTimestamp, timestampOptsFromConfig } from "./agent-timestamp.js";
 import { normalizeRpcAttachmentsToChatAttachments } from "./attachment-normalize.js";
-import { sanitizeChatHistoryMessages, sanitizeChatSendMessageInput } from "./chat.js";
+import {
+  DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS,
+  resolveEffectiveChatHistoryMaxChars,
+  sanitizeChatHistoryMessages,
+  sanitizeChatSendMessageInput,
+} from "./chat.js";
 import { createExecApprovalHandlers } from "./exec-approval.js";
 import { logsHandlers } from "./logs.js";
 
@@ -261,6 +266,32 @@ describe("sanitizeChatHistoryMessages", () => {
         timestamp: 3,
       },
     ]);
+  });
+});
+
+describe("resolveEffectiveChatHistoryMaxChars", () => {
+  it("uses gateway.webchat.chatHistoryMaxChars when RPC maxChars is absent", () => {
+    expect(
+      resolveEffectiveChatHistoryMaxChars(
+        { gateway: { webchat: { chatHistoryMaxChars: 123 } } },
+        undefined,
+      ),
+    ).toBe(123);
+  });
+
+  it("prefers RPC maxChars over config", () => {
+    expect(
+      resolveEffectiveChatHistoryMaxChars(
+        { gateway: { webchat: { chatHistoryMaxChars: 123 } } },
+        45,
+      ),
+    ).toBe(45);
+  });
+
+  it("falls back to the default hardcoded limit", () => {
+    expect(resolveEffectiveChatHistoryMaxChars({}, undefined)).toBe(
+      DEFAULT_CHAT_HISTORY_TEXT_MAX_CHARS,
+    );
   });
 });
 

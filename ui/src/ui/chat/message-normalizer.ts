@@ -241,6 +241,7 @@ export function normalizeMessage(message: unknown): NormalizedMessage {
   if (hasToolId || hasToolContent || hasToolName) {
     role = "toolResult";
   }
+  const isAssistantMessage = role === "assistant";
 
   // Extract content
   let content: MessageContentItem[] = [];
@@ -248,10 +249,14 @@ export function normalizeMessage(message: unknown): NormalizedMessage {
   let replyTarget: NormalizedMessage["replyTarget"] = null;
 
   if (typeof m.content === "string") {
-    const expanded = expandTextContent(m.content);
-    content = expanded.content;
-    audioAsVoice = expanded.audioAsVoice;
-    replyTarget = expanded.replyTarget;
+    if (isAssistantMessage) {
+      const expanded = expandTextContent(m.content);
+      content = expanded.content;
+      audioAsVoice = expanded.audioAsVoice;
+      replyTarget = expanded.replyTarget;
+    } else {
+      content = [{ type: "text", text: m.content }];
+    }
   } else if (Array.isArray(m.content)) {
     content = m.content.flatMap((item: Record<string, unknown>) => {
       if (
@@ -310,7 +315,7 @@ export function normalizeMessage(message: unknown): NormalizedMessage {
           },
         ];
       }
-      if (item.type === "text" && typeof item.text === "string") {
+      if (item.type === "text" && typeof item.text === "string" && isAssistantMessage) {
         const expanded = expandTextContent(item.text);
         audioAsVoice = audioAsVoice || expanded.audioAsVoice;
         if (expanded.replyTarget?.kind === "id") {
@@ -334,10 +339,14 @@ export function normalizeMessage(message: unknown): NormalizedMessage {
       ];
     });
   } else if (typeof m.text === "string") {
-    const expanded = expandTextContent(m.text);
-    content = expanded.content;
-    audioAsVoice = expanded.audioAsVoice;
-    replyTarget = expanded.replyTarget;
+    if (isAssistantMessage) {
+      const expanded = expandTextContent(m.text);
+      content = expanded.content;
+      audioAsVoice = expanded.audioAsVoice;
+      replyTarget = expanded.replyTarget;
+    } else {
+      content = [{ type: "text", text: m.text }];
+    }
   }
 
   const timestamp = typeof m.timestamp === "number" ? m.timestamp : Date.now();

@@ -33,6 +33,19 @@ describe("message-normalizer", () => {
       });
     });
 
+    it("does not reinterpret directive-like user string content", () => {
+      const result = normalizeMessage({
+        role: "user",
+        content: "MEDIA:/tmp/example.png\n[[reply_to_current]]",
+      });
+
+      expect(result.content).toEqual([
+        { type: "text", text: "MEDIA:/tmp/example.png\n[[reply_to_current]]" },
+      ]);
+      expect(result.replyTarget).toBeUndefined();
+      expect(result.audioAsVoice).toBeUndefined();
+    });
+
     it("normalizes message with array content", () => {
       const result = normalizeMessage({
         role: "assistant",
@@ -57,6 +70,23 @@ describe("message-normalizer", () => {
         name: "bash",
         args: { command: "ls" },
       });
+    });
+
+    it("does not reinterpret directive-like user text blocks inside array content", () => {
+      const result = normalizeMessage({
+        role: "user",
+        content: [{ type: "text", text: "MEDIA:/tmp/example.png\n[[audio_as_voice]]" }],
+      });
+
+      expect(result.content).toEqual([
+        {
+          type: "text",
+          text: "MEDIA:/tmp/example.png\n[[audio_as_voice]]",
+          name: undefined,
+          args: undefined,
+        },
+      ]);
+      expect(result.audioAsVoice).toBeUndefined();
     });
 
     it("normalizes message with text field (alternative format)", () => {
