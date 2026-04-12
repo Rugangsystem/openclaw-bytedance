@@ -876,7 +876,19 @@ if not text:
 try:
     payload = json.loads(text)
 except Exception:
-    raise SystemExit(0)
+    decoder = json.JSONDecoder()
+    payload = None
+    for index, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            candidate, _ = decoder.raw_decode(text[index:])
+        except Exception:
+            continue
+        if isinstance(candidate, dict) and isinstance(candidate.get("freshMain"), dict):
+            payload = candidate
+    if payload is None:
+        raise SystemExit(0)
 
 fresh = payload.get("freshMain")
 if not isinstance(fresh, dict):
