@@ -6,6 +6,7 @@ import {
   createAsyncComputedAccountStatusAdapter,
   createDefaultChannelRuntimeState,
 } from "openclaw/plugin-sdk/status-helpers";
+import { loadWhatsAppChannelRuntime, whatsappSetupWizardProxy } from "../assembly.js";
 import { resolveWhatsAppAccount, type ResolvedWhatsAppAccount } from "./accounts.js";
 import { createWhatsAppLoginTool } from "./agent-tools-login.js";
 import { whatsappApprovalAuth } from "./approval-auth.js";
@@ -36,11 +37,7 @@ import {
 import { getWhatsAppRuntime } from "./runtime.js";
 import { resolveWhatsAppOutboundSessionRoute } from "./session-route.js";
 import { whatsappSetupAdapter } from "./setup-core.js";
-import {
-  createWhatsAppPluginBase,
-  loadWhatsAppChannelRuntime,
-  whatsappSetupWizardProxy,
-} from "./shared.js";
+import { createWhatsAppPluginBase } from "./shared.js";
 import { detectWhatsAppLegacyStateMigrations } from "./state-migrations.js";
 import { collectWhatsAppStatusIssues } from "./status-issues.js";
 

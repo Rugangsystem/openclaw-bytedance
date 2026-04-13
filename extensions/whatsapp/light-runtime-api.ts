@@ -1,5 +1,10 @@
-export { getActiveWebListener } from "./src/active-listener.js";
+// Keep light runtime exports delegated to the shared runtime assembly instead
+// of curating a second copy of the runtime surface here.
 export {
+  createWhatsAppLoginTool,
+  formatError,
+  getActiveWebListener,
+  getStatusCode,
   getWebAuthAgeMs,
   logWebSelfId,
   logoutWeb,
@@ -7,6 +12,4 @@ export {
   readWebSelfId,
   WA_WEB_AUTH_DIR,
   webAuthExists,
-} from "./src/auth-store.js";
-export { createWhatsAppLoginTool } from "./src/agent-tools-login.js";
-export { formatError, getStatusCode } from "./src/session-errors.js";
+} from "./src/runtime-api.js";

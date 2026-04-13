@@ -9,10 +9,6 @@ import { createAllowlistProviderRouteAllowlistWarningCollector } from "openclaw/
 import type { ChannelPlugin } from "openclaw/plugin-sdk/core";
 import { createChannelPluginBase, getChatChannelMeta } from "openclaw/plugin-sdk/core";
 import {
-  createDelegatedSetupWizardProxy,
-  type ChannelSetupWizard,
-} from "openclaw/plugin-sdk/setup-runtime";
-import {
   hasAnyWhatsAppAuth,
   listWhatsAppAccountIds,
   resolveDefaultWhatsAppAccountId,
@@ -31,14 +27,6 @@ import { applyWhatsAppSecurityConfigFixes } from "./security-fix.js";
 import { canonicalizeLegacySessionKey, isLegacyGroupSessionKey } from "./session-contract.js";
 
 export const WHATSAPP_CHANNEL = "whatsapp" as const;
-
-export async function loadWhatsAppChannelRuntime() {
-  return await import("./channel.runtime.js");
-}
-
-export const whatsappSetupWizardProxy = createWhatsAppSetupWizardProxy(
-  async () => (await loadWhatsAppChannelRuntime()).whatsappSetupWizard,
-);
 
 const whatsappConfigAdapter = createScopedChannelConfigAdapter<ResolvedWhatsAppAccount>({
   sectionKey: WHATSAPP_CHANNEL,
@@ -59,39 +47,6 @@ const whatsappResolveDmPolicy = createScopedDmSecurityResolver<ResolvedWhatsAppA
   policyPathSuffix: "dmPolicy",
   normalizeEntry: (raw) => normalizeE164(raw),
 });
-
-export function createWhatsAppSetupWizardProxy(
-  loadWizard: () => Promise<ChannelSetupWizard>,
-): ChannelSetupWizard {
-  return createDelegatedSetupWizardProxy({
-    channel: WHATSAPP_CHANNEL,
-    loadWizard,
-    status: {
-      configuredLabel: "linked",
-      unconfiguredLabel: "not linked",
-      configuredHint: "linked",
-      unconfiguredHint: "not linked",
-      configuredScore: 5,
-      unconfiguredScore: 4,
-    },
-    resolveShouldPromptAccountIds: (params) => params.shouldPromptAccountIds,
-    credentials: [],
-    delegateFinalize: true,
-    disable: (cfg) => ({
-      ...cfg,
-      channels: {
-        ...cfg.channels,
-        whatsapp: {
-          ...cfg.channels?.whatsapp,
-          enabled: false,
-        },
-      },
-    }),
-    onAccountRecorded: (accountId, options) => {
-      options?.onAccountId?.(WHATSAPP_CHANNEL, accountId);
-    },
-  });
-}
 
 export function createWhatsAppPluginBase(params: {
   groups: NonNullable<ChannelPlugin<ResolvedWhatsAppAccount>["groups"]>;

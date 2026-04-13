@@ -17,6 +17,20 @@ export { normalizeE164 } from "openclaw/plugin-sdk/account-resolution";
 export type { DmPolicy, GroupPolicy } from "openclaw/plugin-sdk/config-runtime";
 import type { OpenClawConfig as RuntimeOpenClawConfig } from "openclaw/plugin-sdk/config-runtime";
 
+// This is the authoritative heavy runtime assembly for WhatsApp. Keep the
+// host-facing runtime wrappers as thin delegates to this module.
+export { getActiveWebListener } from "./active-listener.js";
+export * from "./action-runtime.js";
+export { createWhatsAppLoginTool } from "./agent-tools-login.js";
+export {
+  getWebAuthAgeMs,
+  logWebSelfId,
+  logoutWeb,
+  pickWebChannel,
+  readWebSelfId,
+  WA_WEB_AUTH_DIR,
+  webAuthExists,
+} from "./auth-store.js";
 export { type ChannelMessageActionName } from "openclaw/plugin-sdk/channel-contract";
 export { loadOutboundMediaFromUrl } from "./outbound-media.runtime.js";
 export {
@@ -39,22 +53,16 @@ export {
 } from "./normalize-target.js";
 export { resolveWhatsAppOutboundTarget } from "./resolve-outbound-target.js";
 export { resolveWhatsAppReactionLevel } from "./reaction-level.js";
+export { monitorWebChannel } from "./auto-reply/monitor.js";
+export * from "./inbound.js";
+export { loginWeb } from "./login.js";
+export { startWebLoginWithQr, waitForWebLogin } from "../login-qr-runtime.js";
+export * from "./media.js";
+export * from "./send.js";
+export { formatError, getStatusCode } from "./session-errors.js";
+export * from "./session.js";
+export { whatsappSetupWizard } from "./setup-surface.js";
+export { setWhatsAppRuntime } from "./runtime.js";
 
 export type OpenClawConfig = RuntimeOpenClawConfig;
 export type { WhatsAppAccountConfig } from "./account-types.js";
-
-type MonitorWebChannel = typeof import("./channel.runtime.js").monitorWebChannel;
-
-let channelRuntimePromise: Promise<typeof import("./channel.runtime.js")> | null = null;
-
-function loadChannelRuntime() {
-  channelRuntimePromise ??= import("./channel.runtime.js");
-  return channelRuntimePromise;
-}
-
-export async function monitorWebChannel(
-  ...args: Parameters<MonitorWebChannel>
-): ReturnType<MonitorWebChannel> {
-  const { monitorWebChannel } = await loadChannelRuntime();
-  return await monitorWebChannel(...args);
-}

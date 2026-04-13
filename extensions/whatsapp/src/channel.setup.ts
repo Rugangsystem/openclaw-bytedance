@@ -1,4 +1,5 @@
 import type { ChannelPlugin } from "openclaw/plugin-sdk/core";
+import { whatsappSetupWizardProxy } from "../assembly.js";
 import { type ResolvedWhatsAppAccount } from "./accounts.js";
 import { webAuthExists } from "./auth-store.js";
 import { resolveWhatsAppGroupIntroHint } from "./group-intro.js";
@@ -7,7 +8,7 @@ import {
   resolveWhatsAppGroupToolPolicy,
 } from "./group-policy.js";
 import { whatsappSetupAdapter } from "./setup-core.js";
-import { createWhatsAppPluginBase, whatsappSetupWizardProxy } from "./shared.js";
+import { createWhatsAppPluginBase } from "./shared.js";
 
 export const whatsappSetupPlugin: ChannelPlugin<ResolvedWhatsAppAccount> = {
   ...createWhatsAppPluginBase({

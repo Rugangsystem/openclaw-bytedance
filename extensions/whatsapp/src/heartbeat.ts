@@ -1,6 +1,6 @@
+import { loadWhatsAppChannelRuntime } from "../assembly.js";
 import { resolveWhatsAppAccount } from "./accounts.js";
 import type { OpenClawConfig } from "./runtime-api.js";
-import { loadWhatsAppChannelRuntime } from "./shared.js";
 
 export async function checkWhatsAppHeartbeatReady(params: {
   cfg: OpenClawConfig;

@@ -1,9 +1,3 @@
-import { defineBundledChannelSetupEntry } from "openclaw/plugin-sdk/channel-entry-contract";
+import { defineWhatsAppBundledChannelSetupEntry } from "./assembly.js";
 
-export default defineBundledChannelSetupEntry({
-  importMetaUrl: import.meta.url,
-  plugin: {
-    specifier: "./setup-plugin-api.js",
-    exportName: "whatsappSetupPlugin",
-  },
-});
+export default defineWhatsAppBundledChannelSetupEntry(import.meta.url);

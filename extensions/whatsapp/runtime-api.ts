@@ -1,12 +1,5 @@
-export * from "./src/active-listener.js";
-export * from "./src/action-runtime.js";
-export * from "./src/agent-tools-login.js";
-export * from "./src/auth-store.js";
+// Keep runtime exports declared in src/runtime-api.ts so host/runtime/setup
+// assembly stays aligned through assembly.ts. auto-reply stays forwarded here
+// because re-exporting it from src/runtime-api.ts reintroduces a runtime cycle.
+export * from "./src/runtime-api.js";
 export * from "./src/auto-reply.js";
-export * from "./src/inbound.js";
-export * from "./src/login.js";
-export * from "./src/media.js";
-export * from "./src/send.js";
-export * from "./src/session.js";
-export { setWhatsAppRuntime } from "./src/runtime.js";
-export { startWebLoginWithQr, waitForWebLogin } from "./login-qr-runtime.js";
