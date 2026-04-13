@@ -156,6 +156,41 @@ describe("web monitor inbox", () => {
     await listener.close();
   });
 
+  it("skips read receipts for implicit self-chat fallback without explicit allowFrom", async () => {
+    const config = {
+      channels: {
+        whatsapp: {
+          allowFrom: [],
+        },
+      },
+      messages: DEFAULT_MESSAGES_CFG,
+    };
+
+    const { onMessage, listener, sock } = await startWebInboxMonitor({
+      config,
+    });
+
+    sock.ev.emit(
+      "messages.upsert",
+      createNotifyUpsert(
+        createDmMessage({
+          id: "self-fallback-1",
+          remoteJid: "123@s.whatsapp.net",
+          conversation: "self fallback ping",
+        }),
+      ),
+    );
+    await settleInboundWork();
+
+    expect(onMessage).toHaveBeenCalledTimes(1);
+    expect(onMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ from: "+123", to: "+123", body: "self fallback ping" }),
+    );
+    expect(sock.readMessages).not.toHaveBeenCalled();
+
+    await listener.close();
+  });
+
   it("skips read receipts when disabled", async () => {
     const { onMessage, listener, sock } = await startWebInboxMonitor({
       sendReadReceipts: false,

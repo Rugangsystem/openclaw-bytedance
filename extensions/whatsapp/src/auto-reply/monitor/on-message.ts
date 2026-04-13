@@ -129,7 +129,7 @@ export function createWebOnMessageHandler(params: {
         warn: params.replyLogger.warn.bind(params.replyLogger),
       });
 
-      const gating = applyGroupGating({
+      const gating = await applyGroupGating({
         cfg: params.cfg,
         msg,
         conversationId,

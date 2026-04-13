@@ -95,7 +95,7 @@ function skipGroupMessageAndStoreHistory(params: ApplyGroupGatingParams, verbose
   return { shouldProcess: false } as const;
 }
 
-export function applyGroupGating(params: ApplyGroupGatingParams) {
+export async function applyGroupGating(params: ApplyGroupGatingParams) {
   const sender = getSenderIdentity(params.msg);
   const self = getSelfIdentity(params.msg, params.authDir);
   const inboundPolicy = resolveWhatsAppInboundPolicy({
@@ -121,10 +121,12 @@ export function applyGroupGating(params: ApplyGroupGatingParams) {
   const baseMentionConfig = {
     ...params.baseMentionConfig,
     allowFrom: inboundPolicy.configuredAllowFrom,
+    isSelfChat: inboundPolicy.isSelfChat,
   };
   const mentionConfig = {
     ...buildMentionConfig(params.cfg, params.agentId),
     allowFrom: inboundPolicy.configuredAllowFrom,
+    isSelfChat: inboundPolicy.isSelfChat,
   };
   const commandBody = stripMentionsForCommand(
     params.msg.body,
@@ -152,7 +154,7 @@ export function applyGroupGating(params: ApplyGroupGatingParams) {
     "group mention debug",
   );
   const wasMentioned = mentionDebug.wasMentioned;
-  const activation = resolveGroupActivationFor({
+  const activation = await resolveGroupActivationFor({
     cfg: params.cfg,
     accountId: inboundPolicy.account.accountId,
     agentId: params.agentId,

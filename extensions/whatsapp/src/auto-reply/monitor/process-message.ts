@@ -159,7 +159,7 @@ export async function processMessage(params: {
   }
 
   // Send ack reaction immediately upon message receipt (post-gating)
-  maybeSendAckReaction({
+  await maybeSendAckReaction({
     cfg: params.cfg,
     msg: params.msg,
     agentId: params.route.agentId,
@@ -220,14 +220,10 @@ export async function processMessage(params: {
     channel: "whatsapp",
     accountId: params.route.accountId,
   });
-  const isSelfChat =
-    params.msg.chatType !== "group" &&
-    Boolean(self.e164) &&
-    normalizeE164(params.msg.from) === normalizeE164(self.e164 ?? "");
   const responsePrefix = resolveWhatsAppResponsePrefix({
     cfg: params.cfg,
     agentId: params.route.agentId,
-    isSelfChat,
+    isSelfChat: params.msg.chatType !== "group" && inboundPolicy.isSelfChat,
     pipelineResponsePrefix: replyPipeline.responsePrefix,
   });
 
