@@ -889,9 +889,9 @@ export const FIELD_HELP: Record<string, string> = {
   "agents.defaults.startupContext.maxFileBytes":
     "Maximum bytes allowed per daily memory file when building startup context (default: 16384). Files over this boundary-safe read limit are skipped.",
   "agents.defaults.startupContext.maxFileChars":
-    "Maximum characters retained from each loaded daily memory file in the startup prelude (default: 2000).",
+    "Maximum characters retained from each loaded daily memory file in the startup prelude (default: 1200).",
   "agents.defaults.startupContext.maxTotalChars":
-    "Maximum total characters retained across all loaded daily memory files in the startup prelude (default: 4500). Additional files are truncated from the prelude once this cap is reached.",
+    "Maximum total characters retained across all loaded daily memory files in the startup prelude (default: 2800). Additional files are truncated from the prelude once this cap is reached.",
   "agents.defaults.repoRoot":
     "Optional repository root shown in the system prompt runtime line (overrides auto-detect).",
   "agents.defaults.envelopeTimezone":

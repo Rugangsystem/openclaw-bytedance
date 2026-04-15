@@ -59,9 +59,9 @@ export type AgentStartupContextConfig = {
   dailyMemoryDays?: number;
   /** Max bytes to read from each daily memory file before skipping (default: 16384). */
   maxFileBytes?: number;
-  /** Max characters retained from each daily memory file (default: 2000). */
+  /** Max characters retained from each daily memory file (default: 1200). */
   maxFileChars?: number;
-  /** Max total characters retained across the startup prelude (default: 4500). */
+  /** Max total characters retained across the startup prelude (default: 2800). */
   maxTotalChars?: number;
 };
 

@@ -3329,7 +3329,7 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                     maximum: 10000,
                     title: "Startup Context Max File Chars",
                     description:
-                      "Maximum characters retained from each loaded daily memory file in the startup prelude (default: 2000).",
+                      "Maximum characters retained from each loaded daily memory file in the startup prelude (default: 1200).",
                   },
                   maxTotalChars: {
                     type: "integer",
@@ -3337,7 +3337,7 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
                     maximum: 50000,
                     title: "Startup Context Max Total Chars",
                     description:
-                      "Maximum total characters retained across all loaded daily memory files in the startup prelude (default: 4500). Additional files are truncated from the prelude once this cap is reached.",
+                      "Maximum total characters retained across all loaded daily memory files in the startup prelude (default: 2800). Additional files are truncated from the prelude once this cap is reached.",
                   },
                 },
                 additionalProperties: false,
@@ -24729,12 +24729,12 @@ export const GENERATED_BASE_CONFIG_SCHEMA: BaseConfigSchemaResponse = {
     },
     "agents.defaults.startupContext.maxFileChars": {
       label: "Startup Context Max File Chars",
-      help: "Maximum characters retained from each loaded daily memory file in the startup prelude (default: 2000).",
+      help: "Maximum characters retained from each loaded daily memory file in the startup prelude (default: 1200).",
       tags: ["performance", "storage"],
     },
     "agents.defaults.startupContext.maxTotalChars": {
       label: "Startup Context Max Total Chars",
-      help: "Maximum total characters retained across all loaded daily memory files in the startup prelude (default: 4500). Additional files are truncated from the prelude once this cap is reached.",
+      help: "Maximum total characters retained across all loaded daily memory files in the startup prelude (default: 2800). Additional files are truncated from the prelude once this cap is reached.",
       tags: ["performance"],
     },
     "agents.defaults.envelopeTimezone": {
