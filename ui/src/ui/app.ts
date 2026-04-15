@@ -250,6 +250,7 @@ export class OpenClawApp extends LitElement {
   @state() wikiMemoryPalaceError: string | null = null;
   @state() wikiMemoryPalace: WikiMemoryPalace | null = null;
   @state() configFormDirty = false;
+  @state() configSettingsMode: "quick" | "advanced" = "quick";
   @state() configFormMode: "form" | "raw" = "form";
   @state() configSearchQuery = "";
   @state() configActiveSection: string | null = null;
