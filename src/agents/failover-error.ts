@@ -257,7 +257,7 @@ function resolveFailoverClassificationFromError(err: unknown): FailoverClassific
     };
   }
 
-  const classification = classifyFailoverSignal(normalizeErrorSignal(err));
+  const classification = classifyFailoverSignal(normalizeDirectErrorSignal(err));
   const nestedCandidates = getNestedErrorCandidates(err).filter((candidate) => candidate !== err);
   if (
     !classification ||
@@ -270,16 +270,6 @@ function resolveFailoverClassificationFromError(err: unknown): FailoverClassific
       const causeClassification = resolveFailoverClassificationFromError(candidate);
       if (causeClassification) {
         return causeClassification;
-      }
-      if (classification?.kind === "reason" && classification.reason === "format") {
-        const directSignal = normalizeDirectErrorSignal(candidate);
-        const directClassification = classifyFailoverSignal(directSignal);
-        if (
-          directClassification === null &&
-          (directSignal.status === 400 || directSignal.status === 422)
-        ) {
-          return null;
-        }
       }
     }
   }
