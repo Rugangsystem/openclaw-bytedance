@@ -26,6 +26,7 @@ Add `.agents/state/` to `.git/info/exclude` (not to `.gitignore`, per `CLAUDE.md
       "url": "https://github.com/openclaw/openclaw/issues/68123",
       "title": "Unauthenticated webhook signature bypass",
       "labels": ["security", "severity:high"],
+      "invocationMode": "batch",
       "score": {
         "total": 24,
         "severity": 8,
@@ -86,6 +87,15 @@ queued
 
 Terminal stages: `merged`, `skipped`, `handed-off-ghsa`.
 Recoverable non-terminal: `blocked` (records reason, waits for human).
+
+## `invocationMode` field
+
+Each issue entry carries `"invocationMode": "batch" | "single-issue"` to record how the driver first picked it up. This is purely informational (metrics, audit) — the state machine and checkpoints are identical across modes, except that:
+
+- `batch` entries were selected by Phase 1 and have a `pass1Score` / `pass2Score` split on the score object.
+- `single-issue` entries were named by the user directly; their `score` is computed by the same rubric but there is no Pass-1/Pass-2 split.
+
+If the user later asks the driver to absorb a single-issue entry into a batch (or vice versa), update the marker in place and append a history entry — do not duplicate the issue.
 
 ## Update contract
 
