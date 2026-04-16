@@ -1,29 +1,55 @@
 ---
 name: openclaw-security-fix-driver
-description: End-to-end driver for fixing the highest-impact open security issues in the OpenClaw repo. Use whenever the user asks to "work through" or "drive" security issues, "fix the top N security bugs", "land security fixes", "clear the security backlog", "triage and patch security reports at scale", or to coordinate a multi-issue security fix campaign. Also use for any request that asks to rank open security issues by importance, batch-fix them, and drive PRs through review and merge. Always delegate PR mechanics to `$openclaw-pr-maintainer`, GHSA-class work to `$openclaw-ghsa-maintainer`, and close/hardening-only decisions to `$security-triage`.
+description: End-to-end driver for fixing open security issues in the OpenClaw repo. Use whenever the user asks to "work through" or "drive" security issues, "fix the top N security bugs", "land security fixes", "clear the security backlog", "triage and patch security reports at scale", or to coordinate a multi-issue security fix campaign. Also use when the user names a specific security issue to fix end-to-end (for example "fix issue #40297", "drive openclaw/openclaw#40297 through merge", "fix this security bug: <URL>", or "take issue 40297 through the full flow") — in that case the skill runs in single-issue mode and skips discovery. Also use for requests that ask to rank open security issues by importance, batch-fix them, and drive PRs through review and merge. Always delegate PR mechanics to `$openclaw-pr-maintainer`, GHSA-class work to `$openclaw-ghsa-maintainer`, and close/hardening-only decisions to `$security-triage`.
 ---
 
 # OpenClaw Security Fix Driver
 
-This skill orchestrates a safe, resumable, multi-issue security fix campaign in the OpenClaw repo. It is **not** a replacement for maintainer skills — it calls them. Think of it as a control loop that runs the four phases end-to-end across many issues:
+This skill orchestrates a safe, resumable security fix workflow in the OpenClaw repo. It is **not** a replacement for maintainer skills — it calls them. Think of it as a control loop that runs the four phases end-to-end:
 
-1. **Discover & rank** the top open security issues
+1. **Discover & rank** the top open security issues (batch mode only)
 2. **Fix** each one (root cause → code → tests → local gates)
 3. **Land** via the existing PR maintainer flow (review nudge → merge)
 4. **Report** a manager-facing summary per merged fix
 
-Every long-running step is checkpointed to a ledger on disk so the campaign can resume across sessions without redoing work.
+Every long-running step is checkpointed to a ledger on disk so work can resume across sessions without redoing it.
 
-## When this skill is the right tool
+## Modes of operation
 
-Use it when the request is "work the top N security issues end-to-end". Use the delegated skills directly when the user is already scoped to one issue, one advisory, or one PR:
+The skill runs in one of two modes, chosen from how the user framed the request.
 
-- Triage-only / close-vs-keep-open decision → `$security-triage`
-- GHSA advisory inspection or private-fork patching → `$openclaw-ghsa-maintainer`
-- A single PR's review/merge/landing mechanics → `$openclaw-pr-maintainer`
+### Batch mode (default)
+
+The user wants to work many issues — phrasings like "fix the top security issues", "clear the security backlog", "drive the top N security bugs through merge." Run **all four phases**, starting at Phase 1. This is the mode described through most of this doc.
+
+### Single-issue mode
+
+The user named a specific issue — an issue number (`#40297`, `issue 40297`), a GitHub URL (`https://github.com/openclaw/openclaw/issues/40297`), or a GHSA id (`GHSA-xxxx-xxxx-xxxx`). Examples:
+
+- "fix issue #40297"
+- "drive openclaw/openclaw#40297 to merge"
+- "take this security bug end-to-end: <URL>"
+- "run the security fix flow on GHSA-xxxx-xxxx-xxxx"
+
+In single-issue mode, **skip Phase 1 entirely**. Jump straight to the fix loop for the named issue. The rest of the flow is identical: same ledger, same checkpoints (C2–C6), same delegation to `$openclaw-pr-maintainer` / `$openclaw-ghsa-maintainer`, same manager-facing report.
+
+Single-issue mode steps:
+
+1. **Parse the target.** Extract the issue number (or GHSA id) from the user's message. Reject ambiguous input — do not guess. If the user mentioned a repo-qualified ref (`owner/repo#N`) that is not `openclaw/openclaw`, stop and ask.
+2. **Load the issue** with `gh issue view <N> --repo openclaw/openclaw --json number,title,body,labels,url,state,createdAt,updatedAt,author` plus `--comments`. For a GHSA id, use `gh api /repos/openclaw/openclaw/security-advisories/<GHSA>` and hand the issue to `$openclaw-ghsa-maintainer`.
+3. **Verify the security framing.** Read the body and comments against the "Deep-read signals" in `references/ranking.md`. If the report is clearly out of scope (private-LAN `ws://`, prompt injection in workspace memory, already-trusted precondition), stop and hand to `$security-triage` — do **not** fabricate a fix just because the user named the issue.
+4. **Record in the ledger.** Upsert the issue with `scripts/ledger.py upsert-issue` at `stage: queued`, mode marker `"invocationMode": "single-issue"`, and the importance score computed per `references/ranking.md`. If the issue is already present (prior campaign run or resume), reuse the existing entry and continue from its current stage per `references/ledger.md`.
+5. **Enter Phase 2 (Per-issue fix loop).** From here, behavior is identical to batch mode: root-cause → checkpoint C2 → implement → test at C3 → hand to `$openclaw-pr-maintainer` for Phase 3 → write the manager report in Phase 4.
+
+In single-issue mode the bulk-action checkpoint (**C4**) effectively collapses — there is no "batch of 5", so C4 never fires unless the user later asks the skill to take on more issues.
+
+**When to use the delegated skills directly instead of this skill:**
+
+- Just a triage close/keep decision, no fix intent → `$security-triage`
+- Reviewing an existing PR someone else filed → `$openclaw-pr-maintainer`
 - Cutting a release after fixes land → `$openclaw-release-maintainer`
 
-This skill is the driver that strings them together for many issues.
+Use this skill when the user wants the fix driven through — whether one issue or many.
 
 ## Non-negotiable safety rules
 
@@ -54,6 +80,8 @@ The driver pauses at each of these points and waits for the user in the chat bef
 Checkpoints exist because the cost of a mistake on a security PR (an unreviewed force-land, a premature advisory disclosure, a bad patch merged) is much higher than the cost of a short wait.
 
 ## Phase 1 — Discover and rank
+
+> **Batch mode only.** In single-issue mode, skip this phase entirely (see "Modes of operation" above) and go straight to Phase 2 with the user's named issue. The single issue still gets scored per `references/ranking.md` so the ledger entry is comparable to batch runs, but no wide discovery happens.
 
 The goal of this phase is a deterministic top-N list of open security issues, scored by importance, with a short justification per issue. **Labels alone are not enough** — many real security issues in this repo are filed without a `security` label, and many labeled `security` are hardening-only noise. Discovery and ranking both run in two passes: a cheap candidate sweep, then a content-aware deep read.
 
