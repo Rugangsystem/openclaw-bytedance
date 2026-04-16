@@ -2,11 +2,48 @@
 
 The goal of the ranking step is a **deterministic, explainable** ordering of open security issues so reviewers can see why issue A is above issue B. Never present a score without the component breakdown.
 
+Ranking runs in two passes. **Pass 1** is the cheap candidate sweep from the ranker script — it uses labels, title/body keywords, and surface mentions, and emits a preliminary score. **Pass 2** is the deep read that actually decides the rank: load the full issue body + comments + any linked GHSA, evaluate the signals below, and re-score. Pass-1 is a filter to avoid reading 5,000 issues; Pass-2 is where the real judgment happens. Labels alone never decide the rank.
+
 ## Score formula
 
 `total = severity + exploitability + blast_radius + recency + surface_sensitivity`
 
 Range: 0 – 28. Tie-break order: `surface_sensitivity`, then `severity`, then oldest `updatedAt`.
+
+## Deep-read signals (Pass 2)
+
+Before touching numbers, read the issue body, all comments, and any linked GHSA. The signals below adjust score components up or down and, more importantly, tell you whether the issue is a real trust-boundary bug, a hardening suggestion, or noise.
+
+### Promotion signals (push a candidate up)
+
+- **Named trust-boundary crossing** — the body explicitly describes crossing unauth → auth, LAN → loopback, plugin → core, untrusted input → privileged execution, sandbox → host, or similar. "Boundary" language, not just "exploit."
+- **Concrete code pointer** — a specific file, function, or line number whose current behavior you can verify. Bonus if the pointer is inside a path in security `CODEOWNERS`.
+- **Reproducer present** — a script, curl, request payload, or test case that demonstrates the flaw. Reports with reproducers are both higher-severity in expectation and lower-risk to fix (you can validate the fix against the repro).
+- **CVSS vector string** (e.g. `CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H`) — treat the base score as authoritative for the `severity` component.
+- **Present in latest shipped tag** — verified via `git show <tag>:<path>`. Raises the `recency` component; "only in `main`" lowers it.
+- **Experienced reporter context** — prior valid advisories from the same reporter, references to upstream CVEs, linked academic/industry disclosures. Not a score bump by itself, but raises confidence when the body is otherwise terse.
+- **Missing security label, but body is clearly a security report** — promote the candidate even though label-only discovery would miss it. This is one of the most common cases.
+
+### Demotion signals (push a candidate down or to skip)
+
+- **Hardening-only framing** — the body says "defense in depth", "additional layer", or proposes tightening an already-enforced guard with no described bypass.
+- **Vague "could be exploited" without a mechanism** — no file, no call path, no payload. Demote until the reporter supplies specifics; do not invent a mechanism to justify the rank.
+- **Trust-model mismatch** — the report's precondition is "attacker has operator admin", "attacker has root on the host", or "attacker has already paired their device." Those are already-trusted positions per `SECURITY.md`; demote hard.
+- **Out-of-scope classes** (disqualifiers, below) — private-LAN `ws://`, prompt injection in workspace memory files, same-user process boundary on a developer machine. Zero the score and route to `$security-triage`.
+- **Already fixed on the latest shipped tag** — verify with `git tag --contains <fix-commit>` if the report names one, or `git show <tag>:<path>` to inspect. Close as "fixed pre-release."
+- **Security-labeled but actually UX** — a `security` label applied during triage on something that turns out to be a usability or error-message concern. Remove from the campaign.
+- **Speculation about attacker motives** — "an attacker could want to..." with no concrete path. Lower confidence; re-read for a real mechanism before scoring.
+
+### Content the ranker script cannot see by itself
+
+The Pass-1 helper is a keyword + label scan. It will miss:
+
+- Reports filed as `bug` or `question` that are actually security issues
+- Security reports whose title is generic (e.g. "WhatsApp reply goes to wrong chat") but whose body describes a routing-integrity bypass
+- Issues whose severity is only visible in a long comment thread
+- Duplicate chains where the original and most informative report lives on a different issue number
+
+Pass 2 catches these. Always read the body and comments, not just the title and labels.
 
 ## Components
 

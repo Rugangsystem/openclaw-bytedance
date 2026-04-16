@@ -55,19 +55,68 @@ Checkpoints exist because the cost of a mistake on a security PR (an unreviewed 
 
 ## Phase 1 — Discover and rank
 
-The goal of this phase is a deterministic top-100 list of open security issues, scored by importance, with a short justification per issue.
+The goal of this phase is a deterministic top-N list of open security issues, scored by importance, with a short justification per issue. **Labels alone are not enough** — many real security issues in this repo are filed without a `security` label, and many labeled `security` are hardening-only noise. Discovery and ranking both run in two passes: a cheap candidate sweep, then a content-aware deep read.
 
-Run the helper:
+### Pass 1 — Wide candidate sweep
+
+Cast a wide net, even at the cost of false positives (Pass 2 will filter):
 
 ```bash
-.agents/skills/openclaw-security-fix-driver/scripts/rank_security_issues.sh --limit 100
+.agents/skills/openclaw-security-fix-driver/scripts/rank_security_issues.sh --limit 300
 ```
 
-It queries open issues with common security label variants (`security`, `severity:*`, `CVSS-*`, `type:security`, and body/title keywords like "GHSA", "advisory"), dedupes, and emits a ranked JSON array on stdout. See `references/ranking.md` for the scoring rubric and how to explain the rank to the user.
+The helper collects candidates from multiple signals and deduplicates by issue number:
 
-GHSA-class issues (anything that originates from `gh api /repos/openclaw/openclaw/security-advisories/*` or is labeled `ghsa`) must be handed to `$openclaw-ghsa-maintainer` for the actual patch/publish flow. The driver keeps them in the ledger and tracks status, but it does not drive the patch itself.
+1. **Label variants** — `security`, `type:security`, `severity:*`, `CVSS-*`, `ghsa`, `vuln`, `hardening`, `auth`, `crypto`, `pairing`
+2. **Title/body keyword search** via `gh search issues` for terms like `RCE`, `auth bypass`, `signature`, `HMAC`, `CSRF`, `SSRF`, `injection`, `path traversal`, `token leak`, `spoof`, `impersonat`, `privilege escalation`, `sandbox escape`, `TOCTOU`, `replay`, `MITM`, `deserializ`, `prototype pollution`
+3. **Surface mentions** — issues that reference `CODEOWNERS`-covered security paths (`src/gateway/auth*`, `src/channels/**/pairing*`, `src/channels/**/secrets*`, webhook verification, signature routines)
+4. **GHSA cross-reference** — `gh api /repos/openclaw/openclaw/security-advisories` so the driver sees advisories even when no public issue exists
 
-At **C1**, show the user the ranked list (top 10 in chat with full JSON saved to the ledger) and confirm scope: how many to work, serial vs parallel, and whether GHSA entries should be forwarded to the GHSA maintainer skill immediately.
+Pass 1 emits a candidate JSON array on stdout. Treat its preliminary score as a **rough bucket**, not the final rank.
+
+### Pass 2 — Deep read and re-score
+
+Labels and keyword matches miss two real cases:
+
+- A report filed as a "bug" with no `security` label that is actually an auth bypass (needs promotion).
+- A report labeled `security` that turns out to be a hardening suggestion or an out-of-scope prompt-injection claim (needs demotion or skip).
+
+For each candidate, **read the issue in full** before locking in a score:
+
+1. Load the issue body, all comments, and any linked GHSA:
+
+   ```bash
+   gh issue view <N> --repo openclaw/openclaw --json number,title,body,labels,url,createdAt,updatedAt,author,comments
+   ```
+
+2. Read the content against the signals in `references/ranking.md` §"Deep-read signals". The key questions:
+
+   - **Is there a concrete trust-boundary crossing described?** (unauth → auth, LAN → loopback, plugin → core, sandbox escape). Vague "could be exploited" language without a mechanism is a demotion signal.
+   - **Is there a reproducer or a clearly-named file/function?** Reproducers + code pointers raise confidence and thus rank.
+   - **Does the reporter distinguish trust-boundary bypass from hardening?** If the report is explicit that it's hardening-only, treat it as hardening.
+   - **What shipped version does it apply to?** Use `git tag --sort=-creatordate | head -1` and `git show <tag>:<path>` to verify the bug exists in the latest released bytes, not just `main`.
+   - **Are there disqualifier matches?** `SECURITY.md` out-of-scope classes (private-LAN `ws://`, prompt injection in workspace memory files, "attacker already has operator admin") → skip to triage, regardless of how serious the body sounds.
+   - **Reporter context** — a detailed report with CVSS vector + PoC from an experienced reporter outranks a one-line "this seems insecure" even at the same keyword-match level.
+
+3. Re-score using the rubric. The Pass-1 score may go up, go down, or stay the same. Save both the Pass-1 and Pass-2 scores in the ledger so re-ranks are auditable.
+
+### Presenting the rank
+
+After Pass 2, sort by final score (tie-break per `references/ranking.md`) and present the top 10 in chat with:
+
+- Rank number, issue number, final total score and component breakdown
+- One-sentence "why this rank" that cites the specific signals (keyword + code pointer + shipped-tag evidence + any demotions)
+- URL
+
+The full ranked JSON — including Pass-1 vs Pass-2 deltas — goes into the ledger. This is what makes the rank defensible if a reviewer asks "why did you prioritize X over Y?"
+
+### GHSA handoff
+
+GHSA-class issues (surfaced via `gh api /repos/openclaw/openclaw/security-advisories` or labeled `ghsa`) must be handed to `$openclaw-ghsa-maintainer` for the actual patch/publish flow. The driver keeps them in the ledger and tracks status, but it does not drive the patch itself.
+
+### Checkpoint C1
+
+Show the user the top 10 with breakdowns and confirm scope: how many to work, serial vs parallel, and whether GHSA entries should be forwarded to the GHSA maintainer skill immediately. If the user disagrees with a specific rank, re-open Pass 2 for that candidate rather than tweaking numbers ad hoc — the goal is that the rank can always be explained from the evidence.
 
 ## Phase 2 — Per-issue fix loop
 

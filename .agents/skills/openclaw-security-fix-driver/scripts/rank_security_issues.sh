@@ -22,8 +22,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Label variants we treat as "security-related". Keep this list broad on purpose
-# — ranking handles deduping and disqualifiers.
+# Label variants we treat as "security-related". Pass 1 is intentionally wide;
+# Pass 2 (the deep read in the skill) handles demotion and skip decisions.
 LABELS=(
   "security"
   "type:security"
@@ -34,12 +34,33 @@ LABELS=(
   "ghsa"
   "CVSS"
   "vuln"
+  "hardening"
+  "auth"
+  "crypto"
+  "pairing"
+)
+
+# Keyword queries — cover terms that commonly appear in security reports whose
+# labels do not include "security". Each line is one search query; the helper
+# unions the results. Keep queries targeted so the body-match stays precise.
+KEYWORD_QUERIES=(
+  "security OR vulnerability OR GHSA OR CVSS OR CVE"
+  "RCE OR \"remote code execution\" OR \"arbitrary code\""
+  "\"auth bypass\" OR \"authentication bypass\" OR \"authorization bypass\""
+  "\"privilege escalation\" OR \"privesc\" OR \"sandbox escape\""
+  "SSRF OR CSRF OR \"path traversal\" OR \"directory traversal\""
+  "\"prototype pollution\" OR deserialization OR \"insecure deserialization\""
+  "\"signature\" OR HMAC OR \"token leak\" OR \"secret leak\""
+  "\"impersonate\" OR \"spoof\" OR replay OR MITM OR \"man-in-the-middle\""
+  "injection AND (command OR shell OR SQL OR header)"
+  "TOCTOU OR \"race condition\" AND (auth OR token OR pairing)"
 )
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-# gh issue list supports one --label per call; union via loop.
+# Source 1: label-driven candidates. gh issue list supports one --label per
+# call; union via loop.
 : > "$tmp/raw.ndjson"
 for label in "${LABELS[@]}"; do
   gh issue list \
@@ -51,15 +72,47 @@ for label in "${LABELS[@]}"; do
     --jq '.[] | @json' >> "$tmp/raw.ndjson" 2>/dev/null || true
 done
 
-# Also pull body/title keyword hits the label query could miss.
+# Source 2: title+body keyword search for issues the label query would miss.
+# This is where reports filed as "bug" or "question" that are actually security
+# issues get picked up.
+for q in "${KEYWORD_QUERIES[@]}"; do
+  gh search issues \
+    --repo "$REPO" \
+    --state open \
+    --match title,body \
+    --limit "$LIMIT" \
+    --json number,title,body,labels,url,createdAt,updatedAt,author \
+    -- "$q" \
+    --jq '.[] | @json' >> "$tmp/raw.ndjson" 2>/dev/null || true
+done
+
+# Source 3: comment-match pass for long-running threads where the security
+# framing only appears after the reporter's first message. Narrower query to
+# avoid pulling everything with the word "token."
 gh search issues \
   --repo "$REPO" \
   --state open \
-  --match title,body \
+  --match comments \
   --limit "$LIMIT" \
   --json number,title,body,labels,url,createdAt,updatedAt,author \
-  -- "security OR GHSA OR CVSS OR vulnerability OR RCE OR \"auth bypass\"" \
+  -- "\"auth bypass\" OR \"signature verification\" OR \"trust boundary\" OR GHSA" \
   --jq '.[] | @json' >> "$tmp/raw.ndjson" 2>/dev/null || true
+
+# Source 4: GHSA cross-reference — advisories that may not have a public issue.
+# Emit a synthetic record per advisory so Pass 2 can load it the same way.
+gh api "/repos/$REPO/security-advisories?state=triage&per_page=100" --jq '
+  .[] | {
+    number: (.ghsa_id | ltrimstr("GHSA-") | gsub("-"; "") | ("9"+.)[0:9] | tonumber? // 900000000),
+    title: ("[GHSA] " + .summary),
+    body:  (.description // ""),
+    labels: [{ name: "ghsa" }],
+    url:   .html_url,
+    createdAt: .published_at,
+    updatedAt: .updated_at,
+    author: { login: (.credits[0].user.login // "unknown") },
+    ghsaId: .ghsa_id
+  } | @json
+' >> "$tmp/raw.ndjson" 2>/dev/null || true
 
 # Dedupe by number, then score. Scoring is intentionally simple and readable;
 # the skill can refine per references/ranking.md before presenting.
