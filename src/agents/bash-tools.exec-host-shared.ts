@@ -205,9 +205,56 @@ export function resolveExecHostApprovalContext(params: {
   const hostAsk = maxAsk(params.ask, approvals.agent.ask);
   const askFallback = minSecurity(hostSecurity, approvals.agent.askFallback);
   if (hostSecurity === "deny") {
-    throw new Error(`exec denied: host=${params.host} security=deny`);
+    // When the host policy file denies, the request is blocked even if the caller
+    // asked for a looser setting. Surface which source resolved to "deny" and
+    // whether the caller's requested policy was tighter, so operators can
+    // diagnose the gap between `tools.exec.security` in openclaw.json and
+    // `~/.openclaw/exec-approvals.json` without reading the source.
+    throw new Error(buildExecDeniedMessage({
+      host: params.host,
+      requestedSecurity: params.security,
+      hostFileSecurity: approvals.agent.security,
+      hostFileSecuritySource: approvals.agentSources?.security ?? null,
+    }));
   }
   return { approvals, hostSecurity, hostAsk, askFallback };
+}
+
+/**
+ * Build a diagnostic "exec denied" error message. Visible for unit tests.
+ * The message preserves the stable `exec denied: host=<h> security=deny`
+ * prefix so existing log/alert matchers keep working, and appends an
+ * attribution clause that identifies which configuration source resolved to
+ * `deny` (and therefore blocked the request).
+ */
+export function buildExecDeniedMessage(params: {
+  host: "gateway" | "node";
+  requestedSecurity: ExecSecurity;
+  hostFileSecurity: ExecSecurity;
+  hostFileSecuritySource: string | null;
+}): string {
+  const parts: string[] = [];
+  const hostFileSourceSuffix = params.hostFileSecuritySource
+    ? ` (${params.hostFileSecuritySource})`
+    : "";
+  if (params.hostFileSecurity === "deny") {
+    parts.push(`exec-approvals.json security=deny${hostFileSourceSuffix}`);
+    if (params.requestedSecurity !== "deny") {
+      parts.push(
+        `openclaw.json tools.exec.security=${params.requestedSecurity} cannot loosen this`,
+      );
+    }
+  } else if (params.requestedSecurity === "deny") {
+    parts.push(`openclaw.json tools.exec.security=deny`);
+  } else {
+    // Neither source is literally "deny" on its own but their intersection is
+    // deny. This should be unreachable with today's ordering but keeps the
+    // message honest if the resolver changes in the future.
+    parts.push(
+      `intersection of openclaw.json tools.exec.security=${params.requestedSecurity} and exec-approvals.json security=${params.hostFileSecurity}${hostFileSourceSuffix}`,
+    );
+  }
+  return `exec denied: host=${params.host} security=deny — ${parts.join("; ")}`;
 }
 
 export async function resolveApprovalDecisionOrUndefined(params: {
