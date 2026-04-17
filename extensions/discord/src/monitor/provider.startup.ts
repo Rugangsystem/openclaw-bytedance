@@ -208,27 +208,59 @@ export function createDiscordMonitorClient(params: {
   };
 }
 
+/**
+ * Error thrown when the bot identity cannot be resolved during startup.
+ * Used so the provider supervisor can distinguish fail-fast identity errors
+ * from unrelated startup failures and retry on transient network issues
+ * (issue #42219).
+ */
+export class DiscordBotIdentityUnresolvedError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "DiscordBotIdentityUnresolvedError";
+  }
+}
+
 export async function fetchDiscordBotIdentity(params: {
   client: Pick<Client, "fetchUser">;
   runtime: RuntimeEnv;
   logStartupPhase: (phase: string, details?: string) => void;
 }) {
   params.logStartupPhase("fetch-bot-identity:start");
+  let botUser: Awaited<ReturnType<Client["fetchUser"]>>;
   try {
-    const botUser = await params.client.fetchUser("@me");
-    const botUserId = botUser?.id;
-    const botUserName =
-      normalizeOptionalString(botUser?.username) ?? normalizeOptionalString(botUser?.globalName);
-    params.logStartupPhase(
-      "fetch-bot-identity:done",
-      `botUserId=${botUserId ?? "<missing>"} botUserName=${botUserName ?? "<missing>"}`,
-    );
-    return { botUserId, botUserName };
+    botUser = await params.client.fetchUser("@me");
   } catch (err) {
+    // Fail fast instead of continuing with botUserId=undefined. A missing bot
+    // id short-circuits the `if (botId && mentionDecision.shouldSkip)` guard
+    // in message-handler.preflight.ts, letting guild messages bypass
+    // `requireMention: true`, and it also disables author-id self-message
+    // filtering. Throwing here lets the provider supervisor restart on
+    // transient failures, matching the fail-fast stance other startup paths
+    // (e.g. fetchDiscordApplicationId when credentials are bad) take.
     params.runtime.error?.(danger(`discord: failed to fetch bot identity: ${String(err)}`));
     params.logStartupPhase("fetch-bot-identity:error", String(err));
-    return { botUserId: undefined, botUserName: undefined };
+    throw new DiscordBotIdentityUnresolvedError(
+      `discord: failed to fetch bot identity: ${String(err)}`,
+      { cause: err },
+    );
   }
+  const botUserId = botUser?.id;
+  if (!botUserId) {
+    // API succeeded but returned no id — still not safe to proceed. Same
+    // reasoning as the catch block above.
+    const reason = `discord: bot identity response missing id (user=${botUser ? "present" : "missing"})`;
+    params.runtime.error?.(danger(reason));
+    params.logStartupPhase("fetch-bot-identity:error", "missing-id");
+    throw new DiscordBotIdentityUnresolvedError(reason);
+  }
+  const botUserName =
+    normalizeOptionalString(botUser?.username) ?? normalizeOptionalString(botUser?.globalName);
+  params.logStartupPhase(
+    "fetch-bot-identity:done",
+    `botUserId=${botUserId} botUserName=${botUserName ?? "<missing>"}`,
+  );
+  return { botUserId, botUserName };
 }
 
 export function registerDiscordMonitorListeners(params: {
