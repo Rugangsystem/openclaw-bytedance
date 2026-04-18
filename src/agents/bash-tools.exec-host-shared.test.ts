@@ -1,7 +1,21 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+type MockedExecApprovals = {
+  defaults: { security: string; ask: string; askFallback: string; autoAllowSkills: boolean };
+  agent: { security: string; ask: string; askFallback: string; autoAllowSkills: boolean };
+  agentSources?: {
+    security: string | null;
+    ask: string | null;
+    askFallback: string | null;
+  };
+  allowlist: unknown[];
+  file: { version: number; agents: Record<string, unknown> };
+};
+
 const mocks = vi.hoisted(() => ({
-  resolveExecApprovals: vi.fn(() => ({
+  // Explicitly typed so individual tests can opt in to `agentSources` without
+  // having to include it in every other mockReturnValue site.
+  resolveExecApprovals: vi.fn<(...args: unknown[]) => MockedExecApprovals>(() => ({
     defaults: {
       security: "allowlist",
       ask: "off",
@@ -19,6 +33,7 @@ const mocks = vi.hoisted(() => ({
   })),
 }));
 
+
 vi.mock("../infra/exec-approvals.js", async (importOriginal) => {
   const mod = await importOriginal<typeof import("../infra/exec-approvals.js")>();
   return {
@@ -33,6 +48,7 @@ let enforceStrictInlineEvalApprovalBoundary: typeof import("./bash-tools.exec-ho
 let resolveExecHostApprovalContext: typeof import("./bash-tools.exec-host-shared.js").resolveExecHostApprovalContext;
 let resolveExecApprovalUnavailableState: typeof import("./bash-tools.exec-host-shared.js").resolveExecApprovalUnavailableState;
 let buildExecApprovalPendingToolResult: typeof import("./bash-tools.exec-host-shared.js").buildExecApprovalPendingToolResult;
+let buildExecDeniedMessage: typeof import("./bash-tools.exec-host-shared.js").buildExecDeniedMessage;
 
 beforeAll(async () => {
   ({
@@ -42,6 +58,7 @@ beforeAll(async () => {
     resolveExecHostApprovalContext,
     resolveExecApprovalUnavailableState,
     buildExecApprovalPendingToolResult,
+    buildExecDeniedMessage,
   } = await import("./bash-tools.exec-host-shared.js"));
 });
 
@@ -201,6 +218,113 @@ describe("resolveExecHostApprovalContext", () => {
     });
 
     expect(result.askFallback).toBe("allowlist");
+  });
+
+  it("includes exec-approvals.json source and config override in the deny error (issue #64361)", () => {
+    // Reporter scenario: openclaw.json has tools.exec.security=full but the
+    // host's exec-approvals.json still resolves to security=deny. Before this
+    // change the thrown message was `exec denied: host=gateway security=deny`
+    // with no hint about which file drove the deny or why the user's config
+    // override did not take effect.
+    mocks.resolveExecApprovals.mockReturnValue({
+      defaults: {
+        security: "deny",
+        ask: "off",
+        askFallback: "deny",
+        autoAllowSkills: false,
+      },
+      agent: {
+        security: "deny",
+        ask: "off",
+        askFallback: "deny",
+        autoAllowSkills: false,
+      },
+      agentSources: {
+        security: "agents.agent-main.security",
+        ask: null,
+        askFallback: null,
+      },
+      allowlist: [],
+      file: { version: 1, agents: {} },
+    });
+
+    expect(() =>
+      resolveExecHostApprovalContext({
+        agentId: "agent-main",
+        security: "full",
+        ask: "off",
+        host: "gateway",
+      }),
+    ).toThrowError(
+      /exec denied: host=gateway security=deny — exec-approvals\.json security=deny \(agents\.agent-main\.security\); openclaw\.json tools\.exec\.security=full cannot loosen this/,
+    );
+  });
+
+  it("still reports a deny even when no exec-approvals.json source is recorded", () => {
+    mocks.resolveExecApprovals.mockReturnValue({
+      defaults: {
+        security: "deny",
+        ask: "off",
+        askFallback: "deny",
+        autoAllowSkills: false,
+      },
+      agent: {
+        security: "deny",
+        ask: "off",
+        askFallback: "deny",
+        autoAllowSkills: false,
+      },
+      // agentSources missing on purpose — older callers do not populate it.
+      allowlist: [],
+      file: { version: 1, agents: {} },
+    });
+
+    expect(() =>
+      resolveExecHostApprovalContext({
+        agentId: "agent-main",
+        security: "allowlist",
+        ask: "off",
+        host: "node",
+      }),
+    ).toThrowError(
+      /exec denied: host=node security=deny — exec-approvals\.json security=deny; openclaw\.json tools\.exec\.security=allowlist cannot loosen this/,
+    );
+  });
+});
+
+describe("buildExecDeniedMessage", () => {
+  it("attributes the deny to exec-approvals.json when the host file denies", () => {
+    expect(
+      buildExecDeniedMessage({
+        host: "gateway",
+        requestedSecurity: "full",
+        hostFileSecurity: "deny",
+        hostFileSecuritySource: "defaults.security",
+      }),
+    ).toBe(
+      "exec denied: host=gateway security=deny — exec-approvals.json security=deny (defaults.security); openclaw.json tools.exec.security=full cannot loosen this",
+    );
+  });
+
+  it("attributes the deny to openclaw.json when only the caller requested deny", () => {
+    expect(
+      buildExecDeniedMessage({
+        host: "node",
+        requestedSecurity: "deny",
+        hostFileSecurity: "full",
+        hostFileSecuritySource: null,
+      }),
+    ).toBe("exec denied: host=node security=deny — openclaw.json tools.exec.security=deny");
+  });
+
+  it("keeps the stable `exec denied: host=<h> security=deny` prefix for existing log matchers", () => {
+    const msg = buildExecDeniedMessage({
+      host: "gateway",
+      requestedSecurity: "allowlist",
+      hostFileSecurity: "deny",
+      hostFileSecuritySource: null,
+    });
+    expect(msg.startsWith("exec denied: host=gateway security=deny")).toBe(true);
   });
 });
 
